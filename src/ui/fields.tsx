@@ -95,12 +95,12 @@ export function FieldInput({ spec, value, onChange, issue, id, cell, disabled }:
 // --------------------------------------------------------------------------
 // Form
 // --------------------------------------------------------------------------
-export function FieldForm({ nodeId, fields, params, issues, onChange }: {
+export function FieldForm({ nodeId, fields, params, issues, onChange, showHelp = true }: {
   nodeId: string; fields: FieldSpec[]; params: Json; issues: Issue[];
-  onChange: (spec: FieldSpec, value: Json) => void;
+  onChange: (spec: FieldSpec, value: Json) => void; showHelp?: boolean;
 }) {
   return (
-    <div className="form-grid">
+    <div className={`form-grid ${showHelp ? "" : "form-grid-tight"}`}>
       {fields.map((spec) => {
         const iss = worst(issues.filter((i) => i.field === spec.key && i.table === undefined));
         const id = `f-${nodeId}-${spec.key}`;
@@ -110,9 +110,11 @@ export function FieldForm({ nodeId, fields, params, issues, onChange }: {
               {spec.label}{isRequired(spec) && <span className="req" aria-label="required">*</span>}
             </label>
             <FieldInput spec={spec} value={getPath(params, spec.key)} issue={iss} id={id} onChange={(v) => onChange(spec, v)} />
-            <div className={`form-msg ${iss ? `msg-${iss.severity}` : ""}`}>
-              {iss ? <><Icon name={iss.severity === "error" ? "error" : "alert"} size={13} />{iss.messages[0]}</> : spec.help}
-            </div>
+            {(iss || showHelp) && (
+              <div className={`form-msg ${iss ? `msg-${iss.severity}` : ""}`}>
+                {iss ? <><Icon name={iss.severity === "error" ? "error" : "alert"} size={13} />{iss.messages[0]}</> : spec.help}
+              </div>
+            )}
           </div>
         );
       })}
@@ -146,6 +148,17 @@ export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, 
   const sel = onSelect ? selected : localSel;
   const select = (r: number) => (onSelect ? onSelect(r) : setLocalSel(r));
   useEffect(() => { if (sel >= list.length) select(list.length - 1); }); // keep selection in range
+  const gridCols = spec.primary ? spec.columns.filter((c) => spec.primary!.includes(c.key)) : spec.columns;
+  const drawerCols = spec.primary ? spec.columns.filter((c) => !spec.primary!.includes(c.key)) : [];
+  useEffect(() => { if (drawerCols.length && sel < 0 && list.length) select(0); }); // drawer always shows a row
+  useEffect(() => { // problem navigation / Details pane may ask for a row
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail as { tableId: string; row: number };
+      if (d.tableId === tableId && d.row !== sel) select(d.row);
+    };
+    window.addEventListener("cce:select-row", on);
+    return () => window.removeEventListener("cce:select-row", on);
+  });
 
   const cellIssue = (r: number, key: string) => worst(mine.filter((i) => i.row === r && (i.column === key || i.column === undefined)));
   const rowSev = (r: number) => worst(mine.filter((i) => i.row === r))?.severity;
@@ -176,12 +189,13 @@ export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, 
         </div>
       </div>
       {tableLevel.map((i, n) => <div key={n} className={`inline-msg msg-${i.severity}`}><Icon name="alert" size={13} />{i.message}</div>)}
+      <div className={drawerCols.length ? "table-split" : ""}>
       <div className="table-scroll">
         <table className="grid">
           <thead>
             <tr>
               <th className="rownum">#</th>
-              {spec.columns.map((c) => (
+              {gridCols.map((c) => (
                 <th key={c.key} style={{ minWidth: c.width ?? 90 }} title={c.help ?? c.label}>
                   {c.label}{isRequired(c) && c.kind !== "bool" && <span className="req">*</span>}
                 </th>
@@ -192,7 +206,7 @@ export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, 
             {list.map((row, r) => (
               <tr key={r} className={r === sel ? "selected" : ""} onMouseDown={() => r !== sel && select(r)}>
                 <td className={`rownum ${rowSev(r) ? `row-${rowSev(r)}` : ""}`}>{r + 1}</td>
-                {spec.columns.map((c) => (
+                {gridCols.map((c) => (
                   <td key={c.key} className={kindOf(c) === "bool" ? "center" : ""}>
                     <FieldInput cell spec={c} id={`c-${tableId}-${r}-${c.key}`} disabled={disabled || !row || typeof row !== "object"}
                       value={row?.[c.key]} issue={cellIssue(r, c.key)}
@@ -208,6 +222,25 @@ export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, 
             {disabled ? disabledHint : <>{emptyHint ?? `No ${spec.itemName.toLowerCase()}s yet.`} <button className="link" onClick={add}>{spec.addLabel}</button></>}
           </div>
         )}
+      </div>
+      {drawerCols.length > 0 && (
+        <div className="row-drawer" aria-label="More settings for the selected row">
+          {sel >= 0 && list[sel] && typeof list[sel] === "object" ? (<>
+            <div className="drawer-head">{spec.itemName} {sel + 1}<span className="muted"> · more settings</span></div>
+            {drawerCols.map((c) => {
+              const iss = cellIssue(sel, c.key);
+              return (
+                <div key={c.key} className="drawer-row">
+                  <label htmlFor={`c-${tableId}-${sel}-${c.key}`}>{c.label}{isRequired(c) && c.kind !== "bool" && <span className="req">*</span>}</label>
+                  <FieldInput spec={c} id={`c-${tableId}-${sel}-${c.key}`} disabled={disabled} value={list[sel]?.[c.key]} issue={iss}
+                    onChange={(v) => onRows((rs) => { rs[sel][c.key] = v; }, { key: `${tableId}:${sel}:${c.key}` })} />
+                  {iss && <div className={`form-msg msg-${iss.severity}`}><Icon name={iss.severity === "error" ? "error" : "alert"} size={12} />{iss.messages[0]}</div>}
+                </div>
+              );
+            })}
+          </>) : <div className="muted small drawer-empty">Select a row to see its other settings.</div>}
+        </div>
+      )}
       </div>
     </div>
   );

@@ -29,6 +29,8 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_selector(".tree-row")
     assert page.locator(".tree-row").count() == 1, "new window must only contain the project"
+    # gentle validation: a fresh project is not shown in red
+    assert page.locator(".banner, .banner-mini, .tree-count, .inp.has-error").count() == 0
     shot(page, "01_new_project")
 
     field(page, "Author").fill("engineer_user")
@@ -91,6 +93,8 @@ with sync_playwright() as p:
 
     ctx_add(page, "ADAS_Camera_Model_A", "Add Fault Injection")
     page.locator(".btn-primary", has_text="Add Fault").click()
+    # wide table: secondary settings live in the row drawer
+    assert page.locator(".row-drawer #c-embeddedLine-0-crcAlgorithm").count() == 1
     page.locator(".tab", has_text="I2C Injection").click()
     page.locator(".btn-primary", has_text="Add Fault").click()
     shot(page, "07_fault_injection")
@@ -128,7 +132,8 @@ with sync_playwright() as p:
 
     # light theme + sample project + problem navigation
     page.locator(".theme-seg button", has_text="Light").click()
-    page.locator('button[aria-label="Open sample project"]').click()
+    page.click("#file-menu-btn")
+    page.locator(".menu-item", has_text="Open sample project").click()
     page.locator(".modal .btn", has_text="Don't save").click() if page.locator(".modal").count() else None
     row(page, "VC0 (Front)").click()
     shot(page, "09_light_vc_sample")

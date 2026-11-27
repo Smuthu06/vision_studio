@@ -70,12 +70,22 @@ autosaved as a recovery draft, and you're offered a restore the next time you op
 4. On the camera, add **Hardware** (Capture / Passthrough boards; *Auto 1:1* adds GPIO
    routing), **Frame Information** (virtual channels, frame outputs, embedded lines), and
    optionally **Fault Injection** and **I2C Monitoring**.
-5. Press **F5** to validate and **Ctrl+S** to save.
+5. Press **F5** to validate and **Ctrl+S** to save. New, Open, Open sample project and
+   Save As are in the **File** menu.
 
 The **Build guide** in the sidebar tracks these steps with a progress bar. Clicking a step
 selects the node that needs work and opens its right-click menu, or jumps to the node
-that needs fixing. Each editor also shows a read-only *Next step* hint listing what can be
-added through the right-click menu.
+that needs fixing. The guide folds away once everything is done. Empty nodes show a
+one-line hint listing what their right-click menu can add.
+
+**Validation stays quiet until it's useful.** A new project doesn't open in red:
+* A field shows an error once you've edited it or moved past it.
+* Every remaining issue appears when you press **F5** (Validate) or **Save**, and whenever
+  you open an existing file.
+* The status bar always shows the true totals.
+* Field and cell problems are marked next to the input. The banner at the top of an editor
+  is reserved for findings that belong to no single input, such as a missing hardware board
+  for an enabled mode.
 
 **Details pane (right side, F1).** It documents the selected node and every one of its inputs:
 * For each node: what it represents, where it sits in the saved JSON (for example
@@ -85,8 +95,11 @@ added through the right-click menu.
   range or allowed values, format, default, unit, an example and practical tips. It also
   shows the input's current value, any validation messages and its exact JSON key.
 * Click into any field or table cell and the pane shows that input's documentation at the
-  top. Double-click an entry (or use *Go to input*) to jump to the input. A filter box
-  searches all inputs. Drag the pane's left edge to resize it.
+  top. The full list of inputs is one click away under *All inputs on this node*. There, a
+  filter box searches all inputs, and double-clicking an entry (or *Go to input*) jumps to
+  it. Drag the pane's left edge to resize it.
+* While the pane is open, the form drops its grey helper lines so the descriptions aren't
+  shown twice.
 
 The texts live in `src/core/docs.ts`. Type, range and allowed values are generated from the
 same specs the validator uses, so they always match. A unit test fails if any field or
@@ -95,6 +108,9 @@ column is left undocumented.
 Other features:
 * Undo/redo; consecutive keystrokes in one field merge into a single undo step.
 * Duplicate camera models and virtual channels.
+* Wide tables (fault injection, I2C monitoring) show their key columns in the grid. The
+  remaining settings of the selected row appear in a drawer beside the grid, or below it
+  when the editor is narrow.
 * A Problems panel; clicking a problem jumps to the exact field or table cell.
 * A JSON preview of the selected node or the whole file.
 * Dark and light themes.

@@ -59,6 +59,7 @@ export interface DetailsPaneProps {
 export function DetailsPane({ node, idx, issues, active, width, onResize, onClose }: DetailsPaneProps) {
   const def = DEFS[node.type];
   const [query, setQuery] = useState("");
+  const [listOpen, setListOpen] = useState(false);   // full input list is on demand
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setExpanded(new Set()); setQuery(""); }, [node.id]);
@@ -135,6 +136,9 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
         <button className="icon-btn" onClick={onClose} title="Hide details (F1)"><Icon name="x" size={14} /></button>
       </div>
       <div className="details-scroll" ref={scrollRef}>
+        {!activeEntry && (fieldEntries.length > 0 || tables.length > 0) && (
+          <div className="focus-empty"><Icon name="mouse" size={15} />Click any field or table cell to see its full description here.</div>
+        )}
         {activeEntry && (
           <section className="focus-card" aria-live="polite">
             <div className="focus-kicker"><Icon name="mouse" size={12} />Selected input{activeEntry.table ? ` · ${activeEntry.table.title}` : ""}</div>
@@ -163,6 +167,13 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
         </section>
 
         {(fieldEntries.length > 0 || tables.length > 0) && (
+          <button className="list-toggle" onClick={() => setListOpen(!listOpen)} aria-expanded={listOpen}>
+            <Icon name={listOpen ? "chevronDown" : "chevronRight"} size={13} />
+            All inputs on this node
+            <span className="count">{fieldEntries.length + tableEntries.reduce((n, g) => n + g.entries.length, 0)}</span>
+          </button>
+        )}
+        {listOpen && (fieldEntries.length > 0 || tables.length > 0) && (
           <div className="details-search">
             <Icon name="list" size={14} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter inputs…" aria-label="Filter inputs" />
@@ -170,7 +181,7 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
           </div>
         )}
 
-        {groups.map((g) => (
+        {listOpen && groups.map((g) => (
           <section key={g.key} className="doc-group">
             <h4>{g.icon && <NodeIcon name={g.icon} size={15} />}{g.title}<span className="count">{g.entries.length}</span></h4>
             {g.doc && !q && <p className="group-doc">{g.doc}</p>}
@@ -198,7 +209,7 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
             })}
           </section>
         ))}
-        {q && !groups.some((g) => g.entries.length) && <p className="muted small pad">No inputs match “{query}”.</p>}
+        {listOpen && q && !groups.some((g) => g.entries.length) && <p className="muted small pad">No inputs match “{query}”.</p>}
         {!fieldEntries.length && !tables.length && (
           <p className="muted small pad">This node has no inputs of its own – it groups its child nodes. Right-click it in the tree to add children.</p>
         )}
