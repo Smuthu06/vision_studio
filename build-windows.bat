@@ -169,13 +169,11 @@ exit /b 0
 
 rem ===========================================================================
 :require
-where %~1 >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] %~2 was not found on PATH.
-    echo         Install it from %~3 and open a new Command Prompt.
-    exit /b 1
-)
-exit /b 0
+rem No ( ) block here: the messages contain parentheses, which would end the block early.
+where %~1 >nul 2>nul && exit /b 0
+echo [ERROR] %~2 was not found on PATH.
+echo         Install it from %~3 and open a new Command Prompt.
+exit /b 1
 
 :usage
 echo Usage: build-windows.bat [installer] [skiptests] [clean] [nopause]
