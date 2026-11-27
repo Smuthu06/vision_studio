@@ -1,0 +1,5 @@
+# Windows scripts and settings must keep CRLF line endings (cmd.exe labels break with LF)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ini text eol=crlf
+config/README-portable.txt text eol=crlf
