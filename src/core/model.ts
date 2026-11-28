@@ -18,7 +18,7 @@ import {
 import { exportTester, importCameraTester, schemaIssues } from "./ctpTester";
 import {
   cascadeHardware, defaultCatalog, defaultHardware, inCatalog, missingHint, optionsFor, projectModeFeatures, resolveSpec,
-  SOURCE_INFO, type Catalog,
+  SOURCE_INFO, withOptionCache, type Catalog,
 } from "./catalog";
 
 export type NodeType =
@@ -1198,11 +1198,13 @@ export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaul
 }
 
 export function validateTree(root: CNode, idx = new TreeIndex(root), catalog: Catalog = defaultCatalog()): Issue[] {
-  const out: Issue[] = [];
-  for (const n of walk(root)) out.push(...validateNode(n, idx, catalog));
-  // tester: the file Save writes must pass tester_configuration.schema.json
-  if (root.type === "tester") out.push(...schemaIssues(root, catalog));
-  return out;
+  return withOptionCache(() => {
+    const out: Issue[] = [];
+    for (const n of walk(root)) for (const i of validateNode(n, idx, catalog)) out.push(i);
+    // tester: the file Save writes must pass tester_configuration.schema.json
+    if (root.type === "tester") for (const i of schemaIssues(root, catalog)) out.push(i);
+    return out;
+  });
 }
 
 export { cascadeHardware };

@@ -262,7 +262,33 @@ export function projectModeFeatures(project: Node | null | undefined): Map<strin
  * Tester records carry the mode they belong to as `$mode` (see optionRecord in model.ts).
  * `unknown`: the list could not be determined (project / folder not loaded) – do not check against it.
  */
-export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {}): { values: string[]; labels: Record<string, string>; unknown?: boolean } {
+type Options = { values: string[]; labels: Record<string, string>; unknown?: boolean };
+
+/**
+ * While a validation pass runs (withOptionCache), option lists are computed once per source and
+ * the few record keys they depend on: hundreds of nodes ask for the same lists. The catalog cannot
+ * change during a pass, so nothing can go stale; outside a pass every call computes afresh.
+ */
+let optionCache: Map<string, Options> | null = null;
+let optionCatalog: Catalog | null = null;
+export function withOptionCache<T>(fn: () => T): T {
+  if (optionCache) return fn(); // nested
+  optionCache = new Map();
+  try { return fn(); } finally { optionCache = null; optionCatalog = null; }
+}
+const RECORD_KEYS = ["manufacture", "model", "cameraModel", "$mode", "$cameraModel", "manufacturer"] as const;
+
+export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {}): Options {
+  if (!optionCache) return computeOptions(source, c, record);
+  if (optionCatalog !== c) { optionCache.clear(); optionCatalog = c; }
+  let key = source as string;
+  for (const k of RECORD_KEYS) key += "\u0000" + (record[k] ?? "");
+  let hit = optionCache.get(key);
+  if (!hit) optionCache.set(key, (hit = computeOptions(source, c, record)));
+  return hit;
+}
+
+function computeOptions(source: CatalogSource, c: Catalog, record: Json): Options {
   const fromOpts = (os: CatalogOption[], labelWithValue = false) => ({
     values: os.map((o) => o.value),
     labels: Object.fromEntries(os.map((o) => [o.value, labelWithValue && o.description ? `${o.value} – ${o.description}` : o.value])),

@@ -66,6 +66,12 @@ function Studio() {
   const issues = useMemo(() => validateTree(root, idx, catalog), [root, idx, catalog]);
   const steps = useMemo(() => computeSteps(root, issues, idx), [root, issues, idx]);
   const selected = idx.get(state.selectedId) ?? root;
+  // JSON preview: written only when the document or the selection changed
+  const previewDoc = state.doc;
+  const previewNode = selected;
+  const wholeDoc = useCallback(() => documentToText(previewDoc, catalog), [previewDoc, catalog]);
+  const docJson = useCallback((n: CNode) => JSON.stringify(n === previewDoc.root ? documentToJson(previewDoc, catalog)
+    : docKind(previewDoc.root) === "tester" ? exportNodeJson(previewDoc.root, n, catalog) : nodeToJson(n), null, 2), [previewDoc, catalog]);
 
   const [theme, setTheme] = useState<string>(() => storage.get("vision-studio.theme")
     ?? (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark"));
@@ -124,7 +130,7 @@ function Studio() {
   // ---- derived issue maps ------------------------------------------------
   const { subtreeSev, ownCount, byNode } = useMemo(() => {
     const byNode = new Map<string, Issue[]>();
-    for (const i of visibleIssues) byNode.set(i.nodeId, [...(byNode.get(i.nodeId) ?? []), i]);
+    for (const i of visibleIssues) { const l = byNode.get(i.nodeId); if (l) l.push(i); else byNode.set(i.nodeId, [i]); }
     const ownCount = new Map<string, { count: number; sev: Severity }>();
     byNode.forEach((list, id) => ownCount.set(id, { count: list.length, sev: list.some((i) => i.severity === "error") ? "error" : "warning" }));
     const subtreeSev = new Map<string, Severity>();
@@ -691,9 +697,7 @@ function Studio() {
       </div>
 
       <BottomPanel tab={bottomTab} setTab={setBottomTab} height={bottomH} setHeight={setBottomH} issues={issues} idx={idx}
-        onIssue={gotoIssue} previewNode={selected} wholeDoc={() => documentToText(state.doc, catalog)}
-        docJson={(n) => JSON.stringify(n === root ? documentToJson(state.doc, catalog)
-          : kind === "tester" ? exportNodeJson(root, n, catalog) : nodeToJson(n), null, 2)} quiet={!revealAll} />
+        onIssue={gotoIssue} previewNode={previewNode} wholeDoc={wholeDoc} docJson={docJson} quiet={!revealAll} />
 
       <footer className="statusbar">
         <span className="status-item"><Icon name={isDesktop ? "desktop" : "globe"} size={13} />{platformName}</span>

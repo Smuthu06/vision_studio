@@ -3,7 +3,7 @@
  * Node icons: flat, classic tree-view style drawn on a 16×16 grid (crisp at 16 px, scales cleanly).
  * UI icons: line icons using currentColor.
  */
-import { useId, type ReactNode } from "react";
+import { memo, useId, type ReactNode } from "react";
 import type { IconName } from "../core/model";
 import type { Severity } from "../core/schema";
 
@@ -183,7 +183,8 @@ const ART: Record<IconName, Art> = {
   },
 };
 
-export function NodeIcon({ name, size = 16, badge }: { name: IconName; size?: number; badge?: Severity | null }) {
+/** Memoized: the tree shows hundreds of these and their SVG art never changes. */
+export const NodeIcon = memo(function NodeIcon({ name, size = 16, badge }: { name: IconName; size?: number; badge?: Severity | null }) {
   const uid = useId().replace(/:/g, "");
   const id = (s: string) => `${uid}-${s}`;
   const art = ART[name];
@@ -201,7 +202,7 @@ export function NodeIcon({ name, size = 16, badge }: { name: IconName; size?: nu
       )}
     </svg>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Line icons for the chrome (stroke = currentColor)

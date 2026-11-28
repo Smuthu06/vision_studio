@@ -6,6 +6,7 @@
 //!   3. `<exe folder>/vision-studio.ini`
 //!   4. `<user config dir>/vision-studio.ini` (e.g. %APPDATA%\com.visionstudio.cameraconfig)
 //!   5. `<resource dir>/vision-studio.ini`    (installed copy)
+//!
 //! Command-line flags `--mode`, `--host`, `--port`, `--no-browser` override the file.
 
 use std::path::{Path, PathBuf};
