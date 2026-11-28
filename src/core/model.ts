@@ -12,7 +12,7 @@ import {
   I2C_REG_MODES, LINK_OPTIONS, MODE_CAPTURE, MODE_PASSTHROUGH, MONITOR_MODES, PACKET_FORMATS, PROJECT_MODES,
   RE_AUTHOR, RE_DATE, RE_EMAIL, RE_PROJECT_NAME, RE_SEMVER, RE_VERSION, SERIAL_CHANNEL_MAX, VC_MAX,
   VC_NAME_SUGGESTIONS, WARNING, checkRecord, getPath, isInt, isNum, isRealDate, ordered, todayDDMMYYYY,
-  checkValue, isEmpty, type FieldSpec, type Json, type Severity, type TableSpec,
+  checkValue, FEATURE_EMC, isEmpty, type FieldSpec, type Json, type Severity, type TableSpec,
 } from "./schema";
 import {
   cascadeHardware, defaultCatalog, defaultHardware, inCatalog, resolveSpec, SOURCE_INFO, type Catalog,
@@ -321,6 +321,13 @@ const nextVcNumber = (frames: CNode): number | null => {
 };
 
 /** {mode: Set(features)} of the project that the tree index belongs to. */
+/** Is `feature` enabled in any project mode? (case-insensitive) */
+export function featureEnabled(idx: TreeIndex, feature: string): boolean {
+  const f = feature.toLowerCase();
+  for (const feats of projectModes(idx).values()) for (const x of feats) if (String(x).toLowerCase() === f) return true;
+  return false;
+}
+
 export function projectModes(idx: TreeIndex): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   const modes = idx.root.type === "project" ? findChild(idx.root, "modes") : undefined;
@@ -413,11 +420,12 @@ export const DEFS: Record<NodeType, NodeDef> = {
       { key: "imager", label: "Imager", help: "Sensor IC model, e.g. SENSOR_MODEL_X", placeholder: "e.g. SENSOR_MODEL_X", source: "imagers" },
       { key: "operatingVoltage", label: "Operating Voltage (V)", kind: "float", min: 1, max: 48, help: "Nominal supply voltage, 1.0–48.0 V" },
       { key: "serializer", label: "Serializer IC", help: "Camera serializer IC part number", placeholder: "e.g. SER_IC_PART_A", source: "serializers" },
-      { key: "imagerAddress", label: "Imager I2C Address", kind: "int", min: 0, max: 255, hex: true, help: "Sensor I2C slave address (0–255), decimal or 0x-hex" },
-      { key: "eeprom.Lenght", label: "EEPROM Length", kind: "int", min: 0, help: "Calibration EEPROM length (schema key 'Lenght')" },
-      { key: "eeprom.Address", label: "EEPROM Address(es)", kind: "intlist", min: 0, hex: true, help: "Comma separated list, e.g. 0x50, 0x51", placeholder: "e.g. 0x50, 0x51" },
-      { key: "eepromHashRegAddress", label: "Hash Register Address", kind: "int", min: 0, hex: true, help: "Hash register start address" },
-      { key: "lenghtHash", label: "Hash Length (bytes)", kind: "int", min: 0, help: "Byte length of calibration hash (schema key 'lenghtHash')" },
+      // EMC parameters: editable only when a project mode enables EMCfeature
+      { key: "imagerAddress", label: "Imager I2C Address", kind: "int", min: 0, max: 255, hex: true, help: "Sensor I2C slave address (0–255), decimal or 0x-hex", requiresFeature: FEATURE_EMC },
+      { key: "eeprom.Lenght", label: "EEPROM Length", kind: "int", min: 0, help: "Calibration EEPROM length (schema key 'Lenght')", requiresFeature: FEATURE_EMC },
+      { key: "eeprom.Address", label: "EEPROM Address(es)", kind: "intlist", min: 0, hex: true, help: "Comma separated list, e.g. 0x50, 0x51", placeholder: "e.g. 0x50, 0x51", requiresFeature: FEATURE_EMC },
+      { key: "eepromHashRegAddress", label: "Hash Register Address", kind: "int", min: 0, hex: true, help: "Hash register start address", requiresFeature: FEATURE_EMC },
+      { key: "lenghtHash", label: "Hash Length (bytes)", kind: "int", min: 0, help: "Byte length of calibration hash (schema key 'lenghtHash')", requiresFeature: FEATURE_EMC },
     ],
     jsonOrder: ["model", "packetFormat", "imager", "operatingVoltage", "serializer", "eeprom", "imagerAddress",
       "eepromHashRegAddress", "lenghtHash", "hw", "frameInformation", "faultInjection", "i2c_monitoring"],
@@ -673,7 +681,10 @@ function monitoringChecks(n: CNode): Issue[] {
  * Check a record against specs. Catalog-backed specs: strict ones must use a listed
  * value (error); the others are checked for format and get a warning when unlisted.
  */
-export function checkFields(specs: readonly FieldSpec[], record: Json, catalog: Catalog): Array<[Severity, string, string]> {
+export function checkFields(specs: readonly FieldSpec[], record: Json, catalog: Catalog,
+  featureOn: (feature: string) => boolean = () => true): Array<[Severity, string, string]> {
+  // inputs locked behind a disabled feature are kept as they are and not checked
+  specs = specs.filter((s) => !s.requiresFeature || featureOn(s.requiresFeature));
   if (!specs.some((s) => s.source)) return checkRecord(specs, record);
   if (record === null || typeof record !== "object" || Array.isArray(record)) return [[ERROR, "", "Entry must be a JSON object"]];
   const out: Array<[Severity, string, string]> = [];
@@ -867,7 +878,8 @@ export const documentToText = (doc: ConfigDocument) => JSON.stringify(documentTo
 export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): Issue[] {
   const def = defOf(n);
   const out: Issue[] = [];
-  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, n.params, catalog)) out.push(issue(sev, msg, n, { field: key || undefined }));
+  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, n.params, catalog, (f) => featureEnabled(idx, f)))
+    out.push(issue(sev, msg, n, { field: key || undefined }));
   for (const t of def.tables ?? []) out.push(...checkTable(n, t, getPath(n.params, t.key), t.key, catalog));
   if (def.checks) out.push(...def.checks(n, idx));
   return out;

@@ -1,7 +1,7 @@
 /** Settings window: edits the option lists (catalog) behind the editor's dropdowns. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  defaultCatalog, normalizeCatalog, normHex, SECTIONS, usageKey,
+  builtInFeature, defaultCatalog, normalizeCatalog, normHex, SECTIONS, usageKey,
   type Catalog, type CatalogOption, type Rename, type SettingsSection,
 } from "../core/catalog";
 import type { CatalogSource } from "../core/schema";
@@ -229,6 +229,7 @@ export function SettingsWindow({ catalog, usage, initialSection = "features", on
               : <ListEditor key={section} items={draft[section as ListKey]} onChange={(xs) => set(section as ListKey, xs)}
                   errors={errors} hex={section === "dataTypes"}
                   usageOf={(x) => (x.orig === undefined ? 0 : usage.get(usageKey(SOURCE_OF[section as ListKey], x.orig)) ?? 0)}
+                  lockedReason={section === "features" ? (x) => (builtInFeature(x.orig ?? x.value) ? "Built-in: switches the EMC parameters of camera models on and off" : undefined) : undefined}
                   valueLabel={VALUE_LABEL[section as ListKey]} placeholder={PLACEHOLDER[section as ListKey]} />}
             </fieldset>
           </section>
@@ -261,9 +262,10 @@ const PLACEHOLDER: Record<ListKey, string> = { features: "e.g. FrameCounterCheck
 // --------------------------------------------------------------------------
 // Flat list editor (value + description)
 // --------------------------------------------------------------------------
-function ListEditor({ items, onChange, errors, usageOf, valueLabel, placeholder, hex, compact, title }: {
+function ListEditor({ items, onChange, errors, usageOf, valueLabel, placeholder, hex, compact, title, lockedReason }: {
   items: DItem[]; onChange: (xs: DItem[]) => void; errors: Map<string, string>; usageOf: (x: DItem) => number;
   valueLabel: string; placeholder: string; hex?: boolean; compact?: boolean; title?: string;
+  lockedReason?: (x: DItem) => string | undefined;
 }) {
   const [adding, setAdding] = useState("");
   const addRef = useRef<HTMLInputElement>(null);
@@ -288,12 +290,15 @@ function ListEditor({ items, onChange, errors, usageOf, valueLabel, placeholder,
           const err = errors.get(x.id);
           const used = usageOf(x);
           const renamed = x.orig !== undefined && x.value.trim() !== x.orig && !(hex && normHex(x.value) === x.orig);
+          const locked = lockedReason?.(x);
           return (
             <div key={x.id} className={`list-row ${err ? "has-err" : ""}`}>
               <div className="cell-wrap">
                 <input className={`inp ${err ? "has-error" : ""}`} value={x.value} aria-label={valueLabel} spellCheck={false}
+                  readOnly={!!locked} title={locked}
                   onChange={(e) => update(x.id, { value: e.target.value })} onBlur={() => hex && normHex(x.value) && update(x.id, { value: normHex(x.value)! })} />
                 {err && <span className="row-err">{err}</span>}
+                {!err && locked && <span className="row-note"><Icon name="info" size={11} /> Built-in</span>}
                 {!err && renamed && <span className="row-note">was {x.orig}</span>}
               </div>
               {!compact && <input className="inp" value={x.description} aria-label="Description" placeholder="—"
@@ -302,8 +307,8 @@ function ListEditor({ items, onChange, errors, usageOf, valueLabel, placeholder,
               <span className="row-actions">
                 <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} title="Move up"><Icon name="arrowUp" size={13} /></button>
                 <button className="icon-btn" disabled={i === items.length - 1} onClick={() => move(i, 1)} title="Move down"><Icon name="arrowDown" size={13} /></button>
-                <button className="icon-btn danger" onClick={() => onChange(items.filter((y) => y.id !== x.id))}
-                  title={used ? `Remove – it is used ${used}× in the open configuration, those values will be flagged` : "Remove"}><Icon name="trash" size={13} /></button>
+                <button className="icon-btn danger" onClick={() => onChange(items.filter((y) => y.id !== x.id))} disabled={!!locked}
+                  title={locked ?? (used ? `Remove – it is used ${used}× in the open configuration, those values will be flagged` : "Remove")}><Icon name="trash" size={13} /></button>
               </span>
             </div>
           );

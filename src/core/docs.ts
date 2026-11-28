@@ -105,7 +105,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
       tip: "Each mode may appear only once in a project.",
     },
     features: {
-      doc: "Optional bench features enabled in this mode. DataLogger records the received frame data to disk. FaultInjection enables the faults defined under each camera's Fault Injection node.",
+      doc: "Optional bench features enabled in this mode. DataLogger records the received frame data to disk. FaultInjection enables the faults defined under each camera's Fault Injection node. EMCfeature enables the EMC parameters of every camera model (imager I2C address, EEPROM length and addresses, hash register and length). The list is maintained in File › Settings › Mode features.",
       example: "DataLogger, FaultInjection",
       tip: "FaultInjection acts on the routed camera ↔ ECU link, so it is only meaningful in PassthroughMode.",
     },
@@ -356,6 +356,7 @@ export function constraintRows(spec: FieldSpec): Array<[string, string]> {
       : spec.min !== undefined ? `≥ ${f(spec.min)}` : `≤ ${f(spec.max!)}`]);
   }
   if (spec.pattern) rows.push(["Format", spec.hint?.replace(/^must (be |have the form )?/, "") ?? spec.pattern.source]);
+  if (spec.requiresFeature) rows.push(["Requires", `${spec.requiresFeature} enabled in a project mode (otherwise read-only and not checked)`]);
   if (spec.source) rows.push(["Values from", `Settings › ${SOURCE_INFO[spec.source].label}${spec.strict ? "" : " (other values give a warning)"}`]);
   if (k === "enum" || k === "multi") {
     const opts = spec.options ?? [];

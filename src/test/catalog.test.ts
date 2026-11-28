@@ -136,3 +136,27 @@ describe("shipped ui_config.json", () => {
     expect(catalog).toEqual(defaultCatalog());
   });
 });
+
+describe("EMCfeature", () => {
+  const emcSpecs = () => DEFS.camera.fields!.filter((f) => f.requiresFeature === "EMCfeature").map((f) => f.key);
+  it("gates exactly the five EMC parameters of a camera model", () => {
+    expect(emcSpecs()).toEqual(["imagerAddress", "eeprom.Lenght", "eeprom.Address", "eepromHashRegAddress", "lenghtHash"]);
+  });
+  it("EMC parameters are only validated while a mode enables EMCfeature", () => {
+    const doc = documentFromJson(SAMPLE);
+    const cam = byType(doc.root, "camera")[0];
+    Object.assign(cam.params, { imagerAddress: 300, lenghtHash: "x", eeprom: { Lenght: -1, Address: "bad" } });
+    expect(validateTree(doc.root)).toEqual([]);                        // off: kept as-is, not checked
+    byType(doc.root, "mode")[1].params.features.push("emcFeature");    // any mode, case-insensitive
+    const fields = validateTree(doc.root).filter((i) => i.nodeId === cam.id).map((i) => i.field).sort();
+    expect(fields).toEqual(["eeprom.Address", "eeprom.Lenght", "imagerAddress", "lenghtHash"]);
+  });
+  it("is a built-in feature: always offered, also for older ui_config.json files", () => {
+    expect(defaultCatalog().features.map((f) => f.value)).toContain("EMCfeature");
+    const old = normalizeCatalog({ features: ["DataLogger", "FaultInjection"] });
+    expect(old.catalog.features.map((f) => f.value)).toEqual(["DataLogger", "FaultInjection", "EMCfeature"]);
+    expect(old.warnings).toEqual([]);
+    const own = normalizeCatalog({ features: ["EMCFeature"] });       // their spelling is kept, not duplicated
+    expect(own.catalog.features.map((f) => f.value)).toEqual(["EMCFeature"]);
+  });
+});

@@ -56,6 +56,14 @@ with sync_playwright() as p:
     field(page, "Model").fill("ADAS_Camera_Model_A")
     field(page, "Imager").select_option(label="SENSOR_MODEL_X")       # dropdowns fed by Settings
     field(page, "Serializer IC").select_option(label="SER_IC_PART_A")
+    # EMC parameters stay locked until a project mode enables EMCfeature
+    assert field(page, "Imager I2C Address").is_disabled()
+    shot(page, "04a_emc_locked")
+    page.locator(".feature-card button.link", has_text="Enable it in Project Modes").click()
+    page.locator(".chip", has_text="EMCfeature").click()
+    row(page, "ADAS_Camera_Model_A").click()
+    assert not field(page, "Imager I2C Address").is_disabled()
+    assert "EMCfeature enabled" in page.locator(".feature-pill").inner_text()
     field(page, "Imager I2C Address").fill("0x34")
     field(page, "Imager I2C Address").focus()
     fc = page.locator(".focus-card")
@@ -126,6 +134,7 @@ with sync_playwright() as p:
     assert cam["imagerAddress"] == 52
     assert cam["frameInformation"][0]["frameOutput"][0]["xSize"] == 1824
     assert pr["projectModes"][1] == {"mode": "PassthroughMode", "features": ["DataLogger", "FaultInjection"]}
+    assert pr["projectModes"][0] == {"mode": "CaptureMode", "features": ["DataLogger", "EMCfeature"]}, pr["projectModes"][0]
     json.dump(data, open(f"{OUT}/built.json", "w"), indent=2)
     print("download:", dl.value.suggested_filename, "keys:", list(cam))
 

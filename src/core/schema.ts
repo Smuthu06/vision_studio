@@ -23,7 +23,9 @@ export const MODE_PASSTHROUGH = "PassthroughMode";
 export const PROJECT_MODES = [MODE_CAPTURE, MODE_PASSTHROUGH] as const;
 export const FEATURE_DATALOGGER = "DataLogger";
 export const FEATURE_FAULTINJECTION = "FaultInjection";
-export const FEATURES = [FEATURE_DATALOGGER, FEATURE_FAULTINJECTION] as const;
+/** Built-in feature: unlocks the EMC parameters of camera models (imager I2C address, EEPROM, hash). */
+export const FEATURE_EMC = "EMCfeature";
+export const FEATURES = [FEATURE_DATALOGGER, FEATURE_FAULTINJECTION, FEATURE_EMC] as const;
 export const PACKET_FORMATS = ["raw8", "raw10", "raw12", "raw14", "raw16"] as const;
 export const HW_KEY_CAPTURE = "CaptureMode";
 export const HW_KEY_PASSTHROUGH = "passthroughMode"; // lower-case "p" as in the schema
@@ -100,6 +102,7 @@ export interface FieldSpec {
   source?: CatalogSource;    // options come from the Settings catalog
   strict?: boolean;          // value outside the catalog list = error (else warning)
   optionLabels?: Record<string, string>; // display text per option value (filled by resolveSpec)
+  requiresFeature?: string;  // editable (and validated) only when a project mode enables this feature
 }
 
 export interface TableSpec {

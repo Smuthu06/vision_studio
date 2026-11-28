@@ -113,9 +113,9 @@ export function FieldInput({ spec, value, onChange, issue, id, cell, disabled }:
 // --------------------------------------------------------------------------
 // Form
 // --------------------------------------------------------------------------
-export function FieldForm({ nodeId, fields, params, issues, onChange, showHelp = true }: {
+export function FieldForm({ nodeId, fields, params, issues, onChange, showHelp = true, disabled = false }: {
   nodeId: string; fields: FieldSpec[]; params: Json; issues: Issue[];
-  onChange: (spec: FieldSpec, value: Json) => void; showHelp?: boolean;
+  onChange: (spec: FieldSpec, value: Json) => void; showHelp?: boolean; disabled?: boolean;
 }) {
   return (
     <div className={`form-grid ${showHelp ? "" : "form-grid-tight"}`}>
@@ -127,7 +127,7 @@ export function FieldForm({ nodeId, fields, params, issues, onChange, showHelp =
             <label htmlFor={id} className="form-label">
               {spec.label}{isRequired(spec) && <span className="req" aria-label="required">*</span>}
             </label>
-            <FieldInput spec={spec} value={getPath(params, spec.key)} issue={iss} id={id} onChange={(v) => onChange(spec, v)} />
+            <FieldInput spec={spec} value={getPath(params, spec.key)} issue={iss} id={id} onChange={(v) => onChange(spec, v)} disabled={disabled} />
             {(iss || showHelp) && (
               <div className={`form-msg ${iss ? `msg-${iss.severity}` : ""}`}>
                 {iss ? <><Icon name={iss.severity === "error" ? "error" : "alert"} size={13} />{iss.messages[0]}</> : spec.help}

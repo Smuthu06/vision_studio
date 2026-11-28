@@ -66,6 +66,7 @@ describe("validation", () => {
   it("camera ranges and enums", () => {
     const doc = documentFromJson(CANONICAL);
     const cam = byType(doc.root, "camera")[0];
+    byType(doc.root, "mode")[0].params.features.push("EMCfeature");   // imagerAddress is an EMC parameter
     Object.assign(cam.params, { operatingVoltage: 60, imagerAddress: 300, packetFormat: "raw9" });
     const f = new Set(issues(doc, "error").map((i) => i.field));
     ["operatingVoltage", "imagerAddress", "packetFormat"].forEach((k) => expect(f.has(k)).toBe(true));

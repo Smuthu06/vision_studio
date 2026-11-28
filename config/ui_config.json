@@ -8,6 +8,10 @@
     {
       "value": "FaultInjection",
       "description": "Enables controlled error injection"
+    },
+    {
+      "value": "EMCfeature",
+      "description": "Enables the EMC parameters of camera models (imager I2C address, EEPROM, calibration hash)"
     }
   ],
   "imagers": [
