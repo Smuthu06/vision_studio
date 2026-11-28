@@ -637,3 +637,11 @@ code.wrap { overflow-wrap: anywhere; }
 .settings-source .link { margin-left: 4px; }
 .settings-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settings-fields:disabled .list-add, .settings-fields:disabled .row-actions, .settings-fields:disabled .list-tools { display: none; }
+
+/* feature-gated inputs (EMCfeature) */
+.feature-card.is-off { background: var(--bg); border-style: dashed; }
+.feature-card.is-off .form-label { color: var(--text-3); }
+.feature-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--bg-active); color: var(--text-2); }
+.feature-pill.on { background: var(--ok-soft); color: var(--ok); }
+.feature-hint { margin: -4px 0 12px; font-size: 12.5px; }
+.inp[readonly] { color: var(--text-2); background: var(--bg); }

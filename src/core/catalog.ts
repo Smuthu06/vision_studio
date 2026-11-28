@@ -8,7 +8,7 @@
  * `resolveSpec` turns that into concrete options for a given record, and the
  * validator uses the same lists, so the UI and the checks always agree.
  */
-import type { CatalogSource, FieldSpec, Json } from "./schema";
+import { FEATURE_EMC, type CatalogSource, type FieldSpec, type Json } from "./schema";
 
 export interface CatalogOption { value: string; description?: string }
 export interface HwModel { name: string; description?: string; serializers: string[]; deserializers: string[] }
@@ -47,12 +47,19 @@ export const SOURCE_INFO: Record<CatalogSource, { section: SettingsSection; labe
   dataTypes: { section: "dataTypes", label: "Data types" },
 };
 
+/** Features the editor itself depends on: always offered, cannot be renamed or removed in Settings. */
+export const BUILT_IN_FEATURES: CatalogOption[] = [
+  { value: FEATURE_EMC, description: "Enables the EMC parameters of camera models (imager I2C address, EEPROM, calibration hash)" },
+];
+export const builtInFeature = (value: string) => BUILT_IN_FEATURES.find((b) => b.value.toLowerCase() === value.trim().toLowerCase());
+
 export function defaultCatalog(): Catalog {
   return {
     version: 1,
     features: [
       { value: "DataLogger", description: "Logs frame data to disk" },
       { value: "FaultInjection", description: "Enables controlled error injection" },
+      ...BUILT_IN_FEATURES,
     ],
     imagers: [
       { value: "SENSOR_MODEL_X", description: "Example sensor" },
@@ -152,6 +159,8 @@ export function normalizeCatalog(raw: Json): { catalog: Catalog; warnings: strin
     imageFormats: pick("imageFormats", () => options(raw.imageFormats, "imageFormats", warnings)),
     dataTypes: pick("dataTypes", () => options(raw.dataTypes, "dataTypes", warnings, true)),
   };
+  // older ui_config.json files: add built-in features that are missing (keep the file's spelling otherwise)
+  for (const b of BUILT_IN_FEATURES) if (!catalog.features.some((f) => f.value.toLowerCase() === b.value.toLowerCase())) catalog.features.push({ ...b });
   if (!catalog.imageFormats.length) { warnings.push("imageFormats: at least one format is required – using defaults"); catalog.imageFormats = def.imageFormats; }
   return { catalog, warnings };
 }

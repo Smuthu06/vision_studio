@@ -150,6 +150,27 @@ one-line hint listing what their right-click menu can add.
   is reserved for findings that belong to no single input, such as a missing hardware board
   for an enabled mode.
 
+**EMCfeature.** A built-in mode feature. Its five EMC parameters are editable and
+validated only while **any** project mode enables EMCfeature:
+* Imager I2C Address
+* EEPROM Length
+* EEPROM Address(es)
+* Hash Register Address
+* Hash Length (bytes)
+
+They sit in a separate *EMC parameters* section of the Camera Model editor.
+
+When the feature is off:
+* The section is greyed out and explains how to enable it (*Enable it in Project
+  Modes*).
+* The values are kept in the JSON, because the schema requires those keys, but they aren't
+  checked.
+
+In Settings › Mode features, EMCfeature is locked (it can't be renamed or removed), and it's
+added automatically to older `ui_config.json` files. Gating works per field through
+`FieldSpec.requiresFeature`, so further feature-dependent inputs only need that one
+property.
+
 **Settings (File › Settings…, Ctrl+,).** Manages the lists behind the editor's dropdowns:
 
 | Section | Feeds |

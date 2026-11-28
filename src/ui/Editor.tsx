@@ -7,6 +7,8 @@ import {
 import { delPath, isEmpty, isRequired, kindOf, RANK, setPath, SERIAL_CHANNEL_MAX, type FieldSpec, type Json, type TableSpec } from "../core/schema";
 import type { Recipe } from "../state/store";
 import { cascadeHardware, resolveSpec, type Catalog } from "../core/catalog";
+import { featureEnabled, findChild } from "../core/model";
+import { FEATURE_EMC } from "../core/schema";
 
 /** Table spec with its catalog-backed columns turned into dropdowns. */
 const resolvedTable = (t: TableSpec, c: Catalog): TableSpec =>
@@ -93,12 +95,19 @@ export function Editor(props: EditorProps) {
 
         <Banner issues={issues} />
 
-        {def.fields && (
+        {def.fields && def.fields.some((f) => !f.requiresFeature) && (
           <section className="card">
             <h3 className="card-title">Parameters</h3>
-            <FieldForm nodeId={node.id} fields={def.fields.map((f) => resolveSpec(f, props.catalog, node.params))} params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
+            <FieldForm nodeId={node.id} fields={def.fields.filter((f) => !f.requiresFeature).map((f) => resolveSpec(f, props.catalog, node.params))}
+              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
+        {[...new Set((def.fields ?? []).map((f) => f.requiresFeature).filter((f): f is string => !!f))].map((feature) => (
+          <FeatureSection key={feature} feature={feature} on={featureEnabled(idx, feature)} idx={idx} onSelect={onSelect}>
+            <FieldForm nodeId={node.id} fields={def.fields!.filter((f) => f.requiresFeature === feature).map((f) => resolveSpec(f, props.catalog, node.params))}
+              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} disabled={!featureEnabled(idx, feature)} />
+          </FeatureSection>
+        ))}
 
         {custom ? custom({ ...props, rowsFor }) : def.tables && (
           def.tableLayout === "tabs"
@@ -131,6 +140,33 @@ export function Editor(props: EditorProps) {
         {node.children.length === 0 && opts.some((o) => o.enabled) && <NextHint node={node} opts={opts} onNodeMenu={props.onNodeMenu} />}
       </div>
     </div>
+  );
+}
+
+/** Inputs that only apply when a project mode enables `feature` (e.g. EMCfeature). */
+function FeatureSection({ feature, on, idx, onSelect, children }: {
+  feature: string; on: boolean; idx: TreeIndex; onSelect: (id: string) => void; children: ReactNode;
+}) {
+  const modes = findChild(idx.root, "modes");
+  const title = feature === FEATURE_EMC ? "EMC parameters" : `${feature} parameters`;
+  return (
+    <section className={`card feature-card ${on ? "is-on" : "is-off"}`}>
+      <div className="card-title-row">
+        <h3 className="card-title">{title}</h3>
+        <span className={`feature-pill ${on ? "on" : ""}`}>
+          <Icon name={on ? "check" : "info"} size={13} />{on ? `${feature} enabled` : `${feature} off`}
+        </span>
+      </div>
+      {!on && (
+        <p className="feature-hint muted">
+          These inputs are used only when a project mode enables <b>{feature}</b>. Their current values are kept in the file but not checked.{" "}
+          {modes
+            ? <button className="link" onClick={() => onSelect((modes.children[0] ?? modes).id)}>Enable it in Project Modes</button>
+            : <>Add Project Modes to the project first (right-click the project).</>}
+        </p>
+      )}
+      {children}
+    </section>
   );
 }
 
