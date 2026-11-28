@@ -58,6 +58,15 @@ static `dist`, a file, or the online demo).
 ./release/VisionStudio/vision-studio --mode web  # browser UI on http://127.0.0.1:8080/
 ```
 
+Run the binary from `release/VisionStudio/`, not from `src-tauri/target/release/`. The INI
+paths are relative to the binary's folder, so from `target/release` the folders would end up
+under `src-tauri/`.
+
+If a terminal of a snap application (for example the VS Code snap) leaks its GTK settings
+(`GTK_PATH`, `GIO_MODULE_DIR`, …), older builds fail with `symbol lookup error: /snap/core20/…/libpthread.so.0`.
+Vision Studio now drops these settings and restarts itself once. For older builds, start
+the binary from a normal terminal instead.
+
 The script mirrors `build-windows.bat`. It produces `release/VisionStudio/` with the binary,
 `vision-studio.ini` and `ui_config.json`, and keeps an existing INI and `ui_config.json` on
 rebuilds.
