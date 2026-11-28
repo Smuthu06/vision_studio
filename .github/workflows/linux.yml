@@ -16,6 +16,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
+      - name: Schema validator up to date (the app's CSP forbids runtime-compiled ajv)
+        run: npm ci && node scripts/gen-tester-validator.mjs --check && npm test
       - name: Build (build-linux.sh)
         run: ./build-linux.sh --deps
       - name: Smoke test (web mode)

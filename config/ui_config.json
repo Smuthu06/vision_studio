@@ -107,22 +107,18 @@
       "description": "RAW20"
     }
   ],
-  "fpgaDevices": [
+  "deviceModes": [
     {
-      "value": "PXIe-1486",
-      "description": "Kintex UltraScale KU11P"
+      "value": "8in",
+      "description": "8 inputs (capture bit files FPGA_8IN_…)"
     },
     {
-      "value": "PXIe-1487",
-      "description": "Kintex UltraScale KU11P"
+      "value": "4in/4out",
+      "description": "4 inputs / 4 outputs (FPGA_4IN4OUT_…)"
     },
     {
-      "value": "PXIe-1488",
-      "description": "Kintex UltraScale KU11P"
-    },
-    {
-      "value": "PXIe-1489",
-      "description": "Kintex UltraScale KU11P"
+      "value": "4in",
+      "description": "4 inputs (FPGA_4IN_…)"
     }
   ],
   "boardDefaults": [

@@ -45,9 +45,9 @@ describe("FPGA board defaults and debayer configurations (ui_config.json)", () =
     expect(optionsFor("debayerConfigs", c).labels.RAW_RGGB_to_RGB).toBe("RAW_RGGB_to_RGB – 1632×1290 RAW RGGB → RGB BGRA");
     expect(debayerSummary(defaultDebayer())).toBe("1632×1290 RAW RGGB → RGB BGRA");
     expect(optionsFor("boardDefaults", c).values).toEqual(["board1"]);
-    const cam = mk("testerCamera", { fpgaBoardDefaults: "board1" }, [mk("testerChannel", {}, [mk("testerVc", { debayer: "RAW_RGGB_to_RGB" })])]);
+    const cam = mk("testerCamera", { fpgaBoardName: "board1" }, [mk("testerChannel", {}, [mk("testerVc", { debayer: "RAW_RGGB_to_RGB" })])]);
     applyRenames(cam, [{ source: "boardDefaults", from: "board1", to: "bench_A" }, { source: "debayerConfigs", from: "RAW_RGGB_to_RGB", to: "front" }]);
-    expect(cam.params.fpgaBoardDefaults).toBe("bench_A");
+    expect(cam.params.fpgaBoardName).toBe("bench_A");
     expect(cam.children[0].children[0].params.debayer).toBe("front");
     expect(defaultBoard("z").boardName).toBe("z");
   });

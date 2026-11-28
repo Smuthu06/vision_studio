@@ -157,9 +157,12 @@ export interface TableProps {
   hideTitle?: boolean;
   disabled?: boolean;
   disabledHint?: string;
+  /** view only (values shown from elsewhere): no add / remove / move buttons */
+  readOnly?: boolean;
 }
 
-export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, onSelect, extraActions, emptyHint, hideTitle, disabled, disabledHint }: TableProps) {
+export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, onSelect, extraActions, emptyHint, hideTitle, disabled: off, disabledHint, readOnly }: TableProps) {
+  const disabled = off || readOnly;
   const list = Array.isArray(rows) ? rows : [];
   const mine = useMemo(() => issues.filter((i) => i.table === tableId), [issues, tableId]);
   const [localSel, setLocalSel] = useState(-1);
@@ -198,13 +201,13 @@ export function DataTable({ spec, rows, tableId, issues, onRows, selected = -1, 
         {hideTitle && spec.help && <span className="muted small">{spec.help}</span>}
         <span className="spacer" />
         {extraActions}
-        <button className="btn btn-sm btn-primary" onClick={add} disabled={disabled}><Icon name="plus" size={14} />{spec.addLabel}</button>
-        <div className="btn-group">
+        {!readOnly && <button className="btn btn-sm btn-primary" onClick={add} disabled={disabled}><Icon name="plus" size={14} />{spec.addLabel}</button>}
+        {!readOnly && <div className="btn-group">
           <button className="btn btn-sm" onClick={remove} disabled={disabled || sel < 0} title="Remove selected row"><Icon name="trash" size={14} />Remove</button>
           <button className="btn btn-sm" onClick={dup} disabled={disabled || sel < 0} title="Duplicate selected row"><Icon name="copy" size={14} /></button>
           <button className="btn btn-sm" onClick={() => move(-1)} disabled={disabled || sel <= 0} title="Move up"><Icon name="arrowUp" size={14} /></button>
           <button className="btn btn-sm" onClick={() => move(1)} disabled={disabled || sel < 0 || sel >= list.length - 1} title="Move down"><Icon name="arrowDown" size={14} /></button>
-        </div>
+        </div>}
       </div>
       {tableLevel.map((i, n) => <div key={n} className={`inline-msg msg-${i.severity}`}><Icon name="alert" size={13} />{i.message}</div>)}
       <div className={drawerCols.length ? "table-split" : ""}>

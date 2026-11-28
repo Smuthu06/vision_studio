@@ -22,9 +22,9 @@ interface DModel { id: string; name: string; description: string; orig?: string;
 interface DMan { id: string; name: string; orig?: string; models: DModel[] }
 interface Draft {
   features: DItem[]; imagers: DItem[]; serializers: DItem[]; hardware: DMan[]; imageFormats: DItem[]; dataTypes: DItem[];
-  fpgaDevices: DItem[]; boardDefaults: DBoard[]; debayerConfigs: DDebayer[];
+  deviceModes: DItem[]; boardDefaults: DBoard[]; debayerConfigs: DDebayer[];
 }
-type ListKey = "features" | "imagers" | "serializers" | "imageFormats" | "dataTypes" | "fpgaDevices";
+type ListKey = "features" | "imagers" | "serializers" | "imageFormats" | "dataTypes" | "deviceModes";
 
 let seq = 0;
 const nid = () => `s${++seq}`;
@@ -38,7 +38,7 @@ function toDraft(c: Catalog, keepOrig = true): Draft {
   return {
     features: list(c.features), imagers: list(c.imagers), serializers: list(c.serializers),
     imageFormats: list(c.imageFormats), dataTypes: list(c.dataTypes),
-    fpgaDevices: list(c.fpgaDevices ?? []),
+    deviceModes: list(c.deviceModes ?? []),
     boardDefaults: (c.boardDefaults ?? []).map((b) => boardToDraft(b, keepOrig)),
     debayerConfigs: (c.debayerConfigs ?? []).map((d) => debayerToDraft(d, keepOrig)),
     hardware: c.hardware.map((m) => ({
@@ -61,7 +61,7 @@ function fromDraft(d: Draft): Catalog {
     version: 1,
     features: opts(d.features), imagers: opts(d.imagers), serializers: opts(d.serializers),
     imageFormats: opts(d.imageFormats), dataTypes: opts(d.dataTypes, true),
-    fpgaDevices: opts(d.fpgaDevices), boardDefaults: d.boardDefaults.map(boardFromDraft), debayerConfigs: d.debayerConfigs.map(debayerFromDraft),
+    deviceModes: opts(d.deviceModes), boardDefaults: d.boardDefaults.map(boardFromDraft), debayerConfigs: d.debayerConfigs.map(debayerFromDraft),
     hardware: d.hardware.map((m) => ({
       name: clean(m.name),
       models: m.models.map((md) => ({
@@ -93,7 +93,7 @@ function draftErrors(d: Draft, warns = new Map<string, string>()): Map<string, s
   check(vals(d.serializers), "Serializer");
   check(vals(d.imageFormats), "Format");
   check(vals(d.dataTypes), "Data type", true);
-  check(vals(d.fpgaDevices), "FPGA device");
+  check(vals(d.deviceModes), "Device mode");
   check(d.hardware.map((m) => ({ id: m.id, v: m.name })), "Manufacturer");
   for (const m of d.hardware) {
     check(m.models.map((md) => ({ id: md.id, v: md.name })), "Model");
@@ -113,7 +113,7 @@ function renamesOf(d: Draft): Rename[] {
   };
   list(d.features, "features"); list(d.imagers, "imagers"); list(d.serializers, "serializers");
   list(d.imageFormats, "imageFormats"); list(d.dataTypes, "dataTypes", true);
-  list(d.fpgaDevices, "fpgaDevices");
+  list(d.deviceModes, "deviceModes");
   for (const b of d.boardDefaults) if (b.orig !== undefined && b.boardName.trim() && b.boardName.trim() !== b.orig) out.push({ source: "boardDefaults", from: b.orig, to: b.boardName.trim() });
   for (const x of d.debayerConfigs) if (x.orig !== undefined && x.name.trim() && x.name.trim() !== x.orig) out.push({ source: "debayerConfigs", from: x.orig, to: x.name.trim() });
   for (const m of d.hardware) {
@@ -131,7 +131,7 @@ function renamesOf(d: Draft): Rename[] {
 
 const SECTION_ICON: Record<SettingsSection, IconName> = {
   features: "mode", imagers: "camera", serializers: "chip", hardware: "hardware", imageFormats: "stream", dataTypes: "film",
-  fpgaDevices: "chip", boardDefaults: "testerCamera", debayerConfigs: "vc",
+  deviceModes: "chip", boardDefaults: "testerCamera", debayerConfigs: "vc",
 };
 
 // --------------------------------------------------------------------------
@@ -277,9 +277,9 @@ export function SettingsWindow({ catalog, usage, initialSection = "features", on
   );
 }
 
-const SOURCE_OF: Record<ListKey, CatalogSource> = { features: "features", imagers: "imagers", serializers: "serializers", imageFormats: "imageFormats", dataTypes: "dataTypes", fpgaDevices: "fpgaDevices" };
-const VALUE_LABEL: Record<ListKey, string> = { features: "Feature", imagers: "Imager", serializers: "Serializer IC", imageFormats: "Format", dataTypes: "Data type (hex)", fpgaDevices: "FPGA device" };
-const PLACEHOLDER: Record<ListKey, string> = { features: "e.g. FrameCounterCheck", imagers: "e.g. IMX490", serializers: "e.g. MAX96717", imageFormats: "e.g. raw20", dataTypes: "e.g. 0x2E", fpgaDevices: "e.g. PXIe-1487" };
+const SOURCE_OF: Record<ListKey, CatalogSource> = { features: "features", imagers: "imagers", serializers: "serializers", imageFormats: "imageFormats", dataTypes: "dataTypes", deviceModes: "deviceModes" };
+const VALUE_LABEL: Record<ListKey, string> = { features: "Feature", imagers: "Imager", serializers: "Serializer IC", imageFormats: "Format", dataTypes: "Data type (hex)", deviceModes: "Device mode" };
+const PLACEHOLDER: Record<ListKey, string> = { features: "e.g. FrameCounterCheck", imagers: "e.g. IMX490", serializers: "e.g. MAX96717", imageFormats: "e.g. raw20", dataTypes: "e.g. 0x2E", deviceModes: "e.g. 4in/4out" };
 
 // --------------------------------------------------------------------------
 // Flat list editor (value + description)

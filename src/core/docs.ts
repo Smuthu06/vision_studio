@@ -216,44 +216,55 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
   fault: {},
   monitoring: {},
   tester: {
-    testerName: { doc: "Name of the tester configuration. Together with the version it forms the file name <Tester Name>_v<version>.json in the tester configuration folder.", example: "HIL_Bench_01", tip: "Letters, digits and underscores only." },
+    applicationName: { doc: "Name of the tester application (applicationName). Together with the version it forms the file name <Application Name>_v<version>.json in the tester configuration folder. It is also written as serviceName, which the schema requires.", example: "Nissan_ADAS_8MP_TESTER", tip: "Letters, digits and underscores only." },
     version: { doc: "Version of this tester configuration. Changing it and saving writes a new file and keeps the old one.", example: "V.1.0.0" },
-    author: { doc: "User identifier of the engineer who created or last revised the tester configuration.", example: "engineer_user" },
-    emailAddress: { doc: "Contact email of the author.", example: "engineer@company.com" },
-    project: { doc: "The project configuration (JSON in the project configuration folder) this tester was created for. Its modes, camera models and hardware fill the dropdowns of the modes and camera models below.", example: "sample_v1.0.0.json", tip: "Choosing another project re-checks every mode and camera model against it." },
+    author: { doc: "User identifier of the engineer who created or last revised the tester configuration.", example: "smuthusa" },
+    emailAddress: { doc: "Contact email of the author.", example: "user@valeo.com" },
+    date: { doc: "Creation or revision date of the tester configuration.", example: "16/09/2026" },
+    project: { doc: "The project configuration (JSON in the project configuration folder) this tester is for. Its modes, camera models, hardware, frame information and I2C monitoring fill the tester; the file stores it as project { name, version }.", example: "sample_v1.0.0.json", tip: "Choosing another project re-checks every mode and camera model against it." },
   },
   testerMode: {
-    mode: { doc: "A mode defined in the selected project configuration. Each mode can be added once.", example: "CaptureMode" },
-    multipleDisplay: { doc: "Shows the camera streams of this mode on multiple displays. Offered only when the selected project enables EMCfeature.", example: "Enabled" },
+    mode: { doc: "A mode defined in the selected project configuration; the tester schema allows CaptureMode and PassthroughMode. Each mode can be added once. Its features and hardwareInfo are written from the project.", example: "CaptureMode" },
+    multipleDisplay: { doc: "Shows the camera streams of this mode on multiple displays (multiple_display). Offered only when the selected project enables EMCfeature.", example: "Enabled" },
   },
   testerCamera: {
-    cameraModel: { doc: "Camera model of the selected project. Its hardware for this mode fills Device Manufacturer and Device Model.", example: "ADAS_Front_Camera" },
-    name: { doc: "Custom name of this camera model on the bench. It is shown in the tree, so several units of the same model can be told apart.", example: "Front_Left" },
-    deviceManufacturer: { doc: "Manufacturer of the hardware configured for this camera model in the project (Capture Hardware for CaptureMode, Passthrough Hardware for PassthroughMode).", example: "NationalInstruments" },
-    deviceModel: { doc: "Hardware model configured for this camera model and manufacturer in the project.", example: "NI1487" },
-    fpgaDevice: { doc: "The FPGA device of the bench this camera is connected to. The list is maintained in File › Settings › FPGA devices.", example: "PXIe-1487", tip: "Bit files are built per device; a bit file for another device gives a warning." },
-    deviceResources: { doc: "NI resource name used to open the FPGA device (as shown in NI MAX).", example: "RIO0" },
-    bitFile: { doc: "FPGA bit file (.lvbitx) loaded into the device. The list shows the files in the fpga_bitfile folder (bitfile_dir in the INI).", example: "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx" },
-    dataloggerConfiguration: { doc: "Datalogger configuration used for this camera. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI).", example: "datalogger_front.json" },
-    fpgaBoardDefaults: { doc: "FPGA board defaults applied when the device is opened: SI/SO reference clocks, frames on DMA, frame sync window and tolerance, LLP FIFO depth and the routing signals (e.g. PXI_Trig1 → Start_Trig). The boards are defined in File › Settings › FPGA board defaults; the tester stores the board name.", example: "board1" },
+    cameraModel: { doc: "Camera model of the selected project. Its imager, packet format, serializer, operating voltage, EMC values and hardware are written into the tester file.", example: "ADAS_Camera_Model_A" },
+    name: { doc: "Logical name of this camera model on the bench (name). It is shown in the tree, so several units of the same model can be told apart.", example: "Front_Left" },
+    manufacturer: { doc: "Manufacturer of the capture hardware configured for this camera model in the project (Capture Hardware for CaptureMode, Passthrough Hardware for PassthroughMode).", example: "NationalInstruments" },
+    deviceModel: { doc: "Capture card model configured for this camera model and manufacturer in the project.", example: "NI1487" },
+    deviceMode: { doc: "IO density configuration of the FPGA (deviceMode). Choosing a bit file sets it from the file name (FPGA_8IN_… → 8in, FPGA_4IN4OUT_… → 4in/4out, FPGA_4IN_… → 4in). The list is maintained in File › Settings › Device modes.", example: "4in/4out" },
+    deviceResource: { doc: "PXI chassis resource address of the capture card (deviceResource), as shown in NI MAX.", example: "PXI1Slot2" },
+    fpgaBitFile: { doc: "FPGA bit file (.lvbitx) loaded into the device. The list shows the files in the fpga_bitfile folder (bitfile_dir in the INI); the file stores the full path.", example: "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx", tip: "A bit file built for another capture card or IO density gives a warning." },
+    dataloggerCommands: { doc: "Datalogger configuration command file. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI); the file stores the full path.", example: "front_logger.json" },
+    fpgaBoardName: { doc: "FPGA board (fpgaBoardName). Its values from File › Settings › FPGA board defaults are written as fpgaDefaults: SI/SO reference clocks, frames on DMA, frame sync window and tolerance and LLP FIFO depth (the routing signals stay in Settings; the schema has no key for them).", example: "board1" },
   },
   testerChannel: {
-    channel: { doc: "Bench channel: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). Each channel can be used once per camera model.", example: "SI0" },
-    name: { doc: "Name of the signal on this channel; shown in the tree.", example: "Front" },
-    pocMode: { doc: "Power over Coax: the bench supplies the camera over the coax cable of this channel.", example: "Enabled" },
-    streamingMode: { doc: "Streams the image data received on this channel.", example: "Enabled" },
-    i2cInitFile: { doc: "I2C initialisation script written to the camera when the channel starts. The list shows the .txt files in the i2c_configuration folder (i2c_dir in the INI).", example: "front_init.txt" },
+    channel: { doc: "Bench channel: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). In PassthroughMode this is the input (SI). Each channel can be used once per camera model.", example: "SI1" },
+    channelName: { doc: "Name of the signal on this channel (channelName); shown in the tree.", example: "CH0_In" },
+    pocMode: { doc: "Power over Coax of the channel: Internal, Auxiliary or None.", example: "Internal" },
+    streamingMode: { doc: "Streaming mode of the channel: Single or Continuous.", example: "Single" },
+    i2cCommands: { doc: "I2C initialisation script written when the channel starts. The list shows the .txt files in the i2c_configuration folder (i2c_dir in the INI); the file stores the full path.", example: "I2CConfig.txt" },
+    outputChannel: { doc: "PassthroughMode: the serializer output (SO0–SO7) the input is passed to.", example: "SO0" },
+    outputChannelName: { doc: "PassthroughMode: name of the output channel.", example: "CH0_Out" },
+    outputPocMode: { doc: "PassthroughMode: Power over Coax of the output.", example: "Auxiliary" },
+    outputI2cCommands: { doc: "PassthroughMode: I2C script for the serializer side (.txt from the i2c_configuration folder).", example: "SER.txt" },
+    soCsiDataLane: { doc: "PassthroughMode: number of MIPI CSI-2 data lanes of the output.", example: "4 Lane" },
+    soCsiDatarate: { doc: "PassthroughMode: CSI-2 data rate of the output in bit/s (SoCsiDatarate).", example: "1300000000" },
+    cybersecurityEnable: { doc: "Enables the cybersecurity (authentication) check of the camera on this channel.", example: "Disabled" },
+    lvClass: { doc: "LabVIEW class that implements the cybersecurity check; required when it is enabled.", example: "X3F(OVT)" },
   },
   i2cWorker: {
-    option: { doc: "Monitoring: read and log the I2C values. Monitoring and Checking: also compare them with the expected values and report deviations.", example: "Monitoring and Checking" },
+    i2cWorkerMode: { doc: "Monitoring: read and log the I2C values. Monitoring & Checking: also compare them with the expected values. With Monitoring & Checking the panel shows the I2C Checking Config: the register, error-count and temperature monitors of the project's I2C Monitoring of the camera model, saved as i2cCheckingConfig. With Monitoring only, i2cCheckingConfig is saved as null.", example: "Monitoring & Checking" },
     pauseTime: { doc: "Pause between two I2C read cycles, in milliseconds.", example: "100" },
   },
   testerVc: {
-    virtualChannel: { doc: "Virtual channel of the camera model as defined in the selected project (Frame Information). The list shows its number and name.", example: "0 – Front" },
-    name: { doc: "Name of this virtual channel on the bench; shown in the tree.", example: "Front_VC0" },
-    debayer: { doc: "Debayer configuration for the image data of this virtual channel: image size, input and output format (data size, bit depth, byte order, RAW/RGB/YUV with Bayer mask, channel order or YUV layout), conversion parameter, preferred/alternative device and IMAQ image type. The configurations are defined in File › Settings › Debayer configurations; the tester stores the name.", example: "RAW_RGGB_to_RGB" },
+    virtualChannel: { doc: "Virtual channel of the camera model as defined in the selected project (Frame Information); written as VC<n> with its frameInfo.", example: "0 – Front" },
+    name: { doc: "Name of this virtual channel.", example: "Image" },
+    debayer: { doc: "Debayer configuration for the image data of this virtual channel, from File › Settings › Debayer configurations. Written as cameraDebayer (the name) and debayerConfiguration with the schema's keys: imageSize, inputFormat and outputFormat (dataSize, bitDepthPerChannel, useBigEndian) and conversionParams (Conv_Param_1).", example: "RAW_RGGB_to_RGB" },
   },
-  frameAnalysisWorker: {},
+  frameAnalysisWorker: {
+    frameVerification: { doc: "Checks every frame of the virtual channel against its frame information (written as \"Frame Verification\").", example: "Enabled" },
+  },
 };
 
 // --------------------------------------------------------------------------
@@ -431,6 +442,27 @@ export function constraintRows(spec: FieldSpec): Array<[string, string]> {
 }
 
 /** JSON location of a node in the saved file, e.g. project.cameraModels[0].hw[1].passthroughMode */
+const passthroughBelow = (n: CNode, idx: TreeIndex) => /^passthrough/i.test(String(idx.ancestor(n, "testerMode")?.params.mode ?? ""));
+
+/** Key in the written tester file of an editor field, relative to its node (the editor uses its own names for a few). */
+export function fieldJsonKey(node: CNode, key: string, idx: TreeIndex): string {
+  const pass = passthroughBelow(node, idx);
+  const map: Record<string, Record<string, string>> = {
+    tester: { project: "project.{name, version}" },
+    testerMode: { multipleDisplay: "multiple_display" },
+    testerChannel: {
+      channel: pass ? "input.channel" : "channel", channelName: pass ? "input.channelName" : "channelName",
+      pocMode: pass ? "input.pocMode" : "pocMode", streamingMode: pass ? "input.streamingMode" : "streamingMode",
+      i2cCommands: pass ? "input.i2cCommands" : "i2cCommands", outputChannel: "output.channel", outputChannelName: "output.channelName",
+      outputPocMode: "output.pocMode", outputI2cCommands: "output.i2cCommands", soCsiDataLane: "output.soCsiDataLane",
+      soCsiDatarate: "output.SoCsiDatarate", cybersecurityEnable: "cybersecurity.enable", lvClass: "cybersecurity.lvClass",
+    },
+    testerVc: { virtualChannel: "virtualChannel (\"VC<n>\")", debayer: "cameraDebayer (+ debayerConfiguration)" },
+    frameAnalysisWorker: { frameVerification: "[\"Frame Verification\"]" },
+  };
+  return map[node.type]?.[key] ?? key;
+}
+
 export function jsonPathOf(node: CNode, idx: TreeIndex): string {
   const parent = idx.parentOf(node);
   const indexIn = (p: CNode) => p.children.filter((c) => c.type === node.type).indexOf(node);
@@ -445,12 +477,12 @@ export function jsonPathOf(node: CNode, idx: TreeIndex): string {
     case "frames": return `${jsonPathOf(parent!, idx)}.frameInformation`;
     case "fault": return `${jsonPathOf(parent!, idx)}.faultInjection`;
     case "monitoring": return `${jsonPathOf(parent!, idx)}.i2c_monitoring`;
-    case "tester": return "tester";
-    case "testerMode": return `tester.modes[${indexIn(parent!)}]`;
+    case "tester": return "cameraTester";
+    case "testerMode": return `cameraTester.testModes[${indexIn(parent!)}]`;
     case "testerCamera": return `${jsonPathOf(parent!, idx)}.cameraModels[${indexIn(parent!)}]`;
-    case "testerChannel": return `${jsonPathOf(parent!, idx)}.channels[${indexIn(parent!)}]`;
-    case "i2cWorker": return `${jsonPathOf(parent!, idx)}.i2cWorker`;
-    case "testerVc": return `${jsonPathOf(parent!, idx)}.virtualChannels[${indexIn(parent!)}]`;
+    case "testerChannel": return `${jsonPathOf(parent!, idx)}.channelConfiguration[${indexIn(parent!)}]`;
+    case "i2cWorker": return `${jsonPathOf(parent!, idx)}${passthroughBelow(node, idx) ? ".input" : ""}.i2cWorker`;
+    case "testerVc": return `${jsonPathOf(parent!, idx)}${passthroughBelow(node, idx) ? ".input" : ""}.vcConfiguration[${indexIn(parent!)}]`;
     case "frameAnalysisWorker": return `${jsonPathOf(parent!, idx)}.frameAnalysisWorker`;
   }
 }

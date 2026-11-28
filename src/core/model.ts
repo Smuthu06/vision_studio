@@ -12,8 +12,10 @@ import {
   I2C_REG_MODES, LINK_OPTIONS, MODE_CAPTURE, MODE_PASSTHROUGH, MONITOR_MODES, PACKET_FORMATS, PROJECT_MODES,
   RE_AUTHOR, RE_DATE, RE_EMAIL, RE_PROJECT_NAME, RE_SEMVER, RE_VERSION, SERIAL_CHANNEL_MAX, VC_MAX,
   VC_NAME_SUGGESTIONS, WARNING, checkRecord, getPath, isInt, isNum, isRealDate, ordered, todayDDMMYYYY,
-  checkValue, FEATURE_EMC, I2C_WORKER_OPTIONS, isEmpty, isRequired, TESTER_CHANNELS, type FieldSpec, type Json, type Severity, type TableSpec,
+  checkValue, FEATURE_EMC, I2C_WORKER_OPTIONS, isEmpty, isRequired, POC_MODES, SI_CHANNELS, SO_CHANNELS, SO_CSI_LANES,
+  STREAMING_MODES, TESTER_CHANNELS, type FieldSpec, type Json, type Severity, type TableSpec,
 } from "./schema";
+import { exportTester, importCameraTester, schemaIssues } from "./ctpTester";
 import {
   cascadeHardware, defaultCatalog, defaultHardware, inCatalog, missingHint, optionsFor, projectModeFeatures, resolveSpec,
   SOURCE_INFO, type Catalog,
@@ -282,10 +284,12 @@ export const TEMPERATURE_MONITOR_TABLE: TableSpec = {
 };
 
 /** A new tester channel: the next free bench channel, with its I2C worker. */
-function makeTesterChannel(cam: CNode): CNode {
+function makeTesterChannel(cam: CNode, mode?: Json): CNode {
   const used = new Set(cam.children.map((c) => c.params.channel));
-  const channel = TESTER_CHANNELS.find((c) => !used.has(c)) ?? TESTER_CHANNELS[0];
-  return mk("testerChannel", { channel, name: "", pocMode: false, streamingMode: false, i2cInitFile: "" },
+  const passthrough = /^passthrough/i.test(String(mode ?? ""));
+  const channel = (passthrough ? SI_CHANNELS : TESTER_CHANNELS).find((c) => !used.has(c)) ?? TESTER_CHANNELS[0];
+  const out = SO_CHANNELS.find((c) => !cam.children.some((x) => x.params.outputChannel === c)) ?? SO_CHANNELS[0];
+  return mk("testerChannel", { ...DEFS.testerChannel.defaultParams(), channel, channelName: channel, outputChannel: out, outputChannelName: out },
     [mk("i2cWorker", DEFS.i2cWorker.defaultParams())]);
 }
 
@@ -350,6 +354,19 @@ export function featureEnabled(idx: TreeIndex, feature: string, catalog?: Catalo
  * The record used to look up dropdown options for a node: its params plus, for tester
  * camera models, the tester mode they belong to (`$mode`) – the project hardware differs per mode.
  */
+/** Fields of a node that apply below its tester mode (FieldSpec.showInMode). */
+export function fieldsInMode(fields: readonly FieldSpec[], n: CNode, idx: TreeIndex): FieldSpec[] {
+  if (!fields.some((f) => f.showInMode)) return [...fields];
+  const mode = String(idx.ancestor(n, "testerMode")?.params.mode ?? "");
+  return fields.filter((f) => !f.showInMode || f.showInMode.toLowerCase() === mode.toLowerCase());
+}
+
+/** IO density of a bit file from its name: FPGA_8IN_… → 8in, FPGA_4IN4OUT_… → 4in/4out, FPGA_4IN_… → 4in. */
+export function bitFileDeviceMode(name: string): string | undefined {
+  const m = /FPGA_(\d+)IN(?:(\d+)OUT)?_/i.exec(name);
+  return m ? (m[2] ? `${m[1]}in/${m[2]}out` : `${m[1]}in`) : undefined;
+}
+
 export function optionRecord(n: CNode, idx: TreeIndex): Json {
   if (!["testerCamera", "testerChannel", "testerVc"].includes(n.type)) return n.params;
   const cam = n.type === "testerCamera" ? n : idx.ancestor(n, "testerCamera");
@@ -587,20 +604,22 @@ export const DEFS: Record<NodeType, NodeDef> = {
   },
 
   // ------------------------------------------------------------------ tester configuration
+  // Parameter names follow the CTP tester schema (tester_configuration.schema.json, see ctpTester.ts).
   tester: {
     type: "tester", title: "Tester", icon: "tester", deletable: false,
-    description: "Tester configuration: the bench set-up used to test the camera models of one project configuration.",
+    description: "Tester configuration (cameraTester): the bench set-up used to test the camera models of one project configuration.",
     childTypes: ["testerMode"],
     fields: [
-      { key: "testerName", label: "Tester Name", pattern: RE_PROJECT_NAME, hint: "may only contain letters, digits and underscores", help: "e.g. HIL_Bench_01" },
+      { key: "applicationName", label: "Application Name", pattern: RE_PROJECT_NAME, hint: "may only contain letters, digits and underscores", help: "Name of the tester application, e.g. Nissan_ADAS_8MP_TESTER" },
       { key: "version", label: "Version", pattern: RE_VERSION, hint: "must have the form V.<major>.<minor>.<patch>, e.g. V.1.0.0", help: "Format V.x.y.z, e.g. V.1.0.0" },
-      { key: "author", label: "Author", pattern: RE_AUTHOR, hint: "must be a short user name (letters, digits, _ . -)", help: "User identifier, e.g. engineer_user", placeholder: "engineer_user" },
+      { key: "author", label: "Author", pattern: RE_AUTHOR, hint: "must be a short user name (letters, digits, _ . -)", help: "User identifier, e.g. smuthusa", placeholder: "engineer_user" },
       { key: "emailAddress", label: "Email Address", pattern: RE_EMAIL, hint: "is not a valid email address", help: `Corporate email, e.g. engineer@${CORPORATE_EMAIL_DOMAIN || "company.com"}`, placeholder: `name@${CORPORATE_EMAIL_DOMAIN || "company.com"}` },
-      { key: "project", label: "Project Configuration", help: "The project JSON (in the project configuration folder) whose modes and camera models this tester uses", source: "projectFiles", strict: true },
+      { key: "date", label: "Date", pattern: RE_DATE, hint: "must be DD/MM/YYYY or DD-MM-YYYY", help: "Creation / revision date (DD/MM/YYYY or DD-MM-YYYY)" },
+      { key: "project", label: "Project Configuration", help: "The project JSON (in the project configuration folder) whose modes and camera models this tester uses; saved as project { name, version }", source: "projectFiles", strict: true },
     ],
-    jsonOrder: ["testerName", "version", "author", "emailAddress", "project", "modes"],
-    defaultParams: () => ({ testerName: "New_Tester", version: "V.1.0.0", author: "", emailAddress: "", project: "" }),
-    label: (n) => String(n.params.testerName || "(unnamed tester)"),
+    jsonOrder: ["author", "emailAddress", "date", "applicationName", "version", "project"],
+    defaultParams: () => ({ applicationName: "New_Tester", version: "V.1.0.0", author: "", emailAddress: "", date: todayDDMMYYYY(), project: "" }),
+    label: (n) => String(n.params.applicationName || "(unnamed tester)"),
     summary: (n) => [n.params.project, `${n.children.length} mode(s)`].filter(Boolean).join(" · "),
     childOptions: (n, _idx, catalog) => {
       const { values, unknown } = optionsFor("projectModes", catalog, {});
@@ -615,21 +634,25 @@ export const DEFS: Record<NodeType, NodeDef> = {
       }];
     },
     checks: (n) => {
+      const out: Issue[] = [];
       const e = n.params.emailAddress;
-      return CORPORATE_EMAIL_DOMAIN && typeof e === "string" && RE_EMAIL.test(e) && !e.toLowerCase().endsWith("@" + CORPORATE_EMAIL_DOMAIN)
-        ? [issue(WARNING, `Email Address should be a corporate address (*@${CORPORATE_EMAIL_DOMAIN})`, n, { field: "emailAddress" })] : [];
+      if (CORPORATE_EMAIL_DOMAIN && typeof e === "string" && RE_EMAIL.test(e) && !e.toLowerCase().endsWith("@" + CORPORATE_EMAIL_DOMAIN))
+        out.push(issue(WARNING, `Email Address should be a corporate address (*@${CORPORATE_EMAIL_DOMAIN})`, n, { field: "emailAddress" }));
+      const d = n.params.date;
+      if (typeof d === "string" && RE_DATE.test(d) && !isRealDate(d)) out.push(issue(ERROR, `Date '${d}' is not a valid calendar date`, n, { field: "date" }));
+      return out;
     },
   },
 
   testerMode: {
     type: "testerMode", title: "Mode", icon: "testerMode", singleton: false,
-    description: "A mode of the selected project in which the tester runs, and the camera models it tests in that mode.",
+    description: "A test mode (CaptureMode or PassthroughMode) of the selected project, and the camera models tested in it. Its features and hardware info are taken from the project when saving.",
     childTypes: ["testerCamera"],
     fields: [
       { key: "mode", label: "Mode", help: "Mode from the selected project configuration", source: "projectModes", strict: true },
-      { key: "multipleDisplay", label: "Multiple Display", kind: "bool", required: false, help: "Show the camera streams on multiple displays", showIf: FEATURE_EMC },
+      { key: "multipleDisplay", label: "Multiple Display", kind: "bool", required: false, help: "Show the camera streams on multiple displays (multiple_display)", showIf: FEATURE_EMC },
     ],
-    jsonOrder: ["mode", "multipleDisplay", "cameraModels"],
+    jsonOrder: ["mode", "multipleDisplay"],
     defaultParams: () => ({ mode: "", multipleDisplay: false }),
     label: (n) => String(n.params.mode || "(select a mode)"),
     summary: (n) => `${n.children.length} camera model(s)`,
@@ -639,42 +662,46 @@ export const DEFS: Record<NodeType, NodeDef> = {
       create: () => DEFS.testerCamera.create!(n, idx, catalog),
     }],
     checks: (n, idx) => {
+      const out: Issue[] = [];
       const mode = n.params.mode;
-      return mode && idx.siblings(n).some((s) => s.params.mode === mode)
-        ? [issue(ERROR, `Mode '${mode}' is defined more than once`, n, { field: "mode" })] : [];
+      if (mode && idx.siblings(n).some((s) => s.params.mode === mode)) out.push(issue(ERROR, `Mode '${mode}' is defined more than once`, n, { field: "mode" }));
+      if (mode && !["CaptureMode", "PassthroughMode"].includes(mode))
+        out.push(issue(ERROR, `The tester schema only knows CaptureMode and PassthroughMode, not '${mode}'`, n, { field: "mode" }));
+      return out;
     },
   },
 
   testerCamera: {
     type: "testerCamera", title: "Camera Model", icon: "testerCamera", singleton: false, duplicable: true,
-    description: "One camera model of the project on this bench: the FPGA device it is connected to, the bit file and the channels.",
+    description: "One camera model of the project on this bench. Imager, packet format, serializer, operating voltage and the EMC values are taken from the project when saving; FPGA defaults from Settings.",
     fields: [
       { key: "cameraModel", label: "Camera Model", help: "Camera model from the selected project configuration", source: "projectCameras", strict: true },
-      { key: "name", label: "Camera Model Name", pattern: /\S/, hint: "must not be blank", help: "Custom name for this camera model on the bench; shown in the tree", placeholder: "e.g. Front_Camera" },
-      { key: "deviceManufacturer", label: "Device Manufacturer", help: "Hardware manufacturer configured for this camera model in the project", source: "projectManufacturers", strict: true },
-      { key: "deviceModel", label: "Device Model", help: "Hardware model configured for this camera model in the project", source: "projectDeviceModels", strict: true },
-      { key: "fpgaDevice", label: "FPGA Device", help: "FPGA device of the bench (list in Settings › FPGA devices)", source: "fpgaDevices" },
-      { key: "deviceResources", label: "Device Resources", help: "NI resource name of the FPGA device, e.g. RIO0 or PXI1Slot2", placeholder: "e.g. RIO0" },
-      { key: "bitFile", label: "Bit File", help: "FPGA bit file (.lvbitx) from the fpga_bitfile folder", source: "bitfiles", strict: true },
-      { key: "dataloggerConfiguration", label: "Datalogger Configuration", required: false, help: "Datalogger configuration (.json) from the datalogger_configuration folder", source: "dataloggers", strict: true },
-      { key: "fpgaBoardDefaults", label: "FPGA Board Defaults", help: "Board default set (list in Settings › FPGA board defaults)", source: "boardDefaults", strict: true },
+      { key: "name", label: "Camera Model Name", pattern: /\S/, hint: "must not be blank", help: "Logical name of this camera model on the bench; shown in the tree", placeholder: "e.g. Front_Camera" },
+      { key: "manufacturer", label: "Device Manufacturer", help: "Hardware manufacturer configured for this camera model in the project", source: "projectManufacturers", strict: true },
+      { key: "deviceModel", label: "Device Model", help: "Capture card model configured for this camera model in the project, e.g. NI1487", source: "projectDeviceModels", strict: true },
+      { key: "deviceMode", label: "Device Mode", help: "IO density configuration: 8in, 4in/4out or 4in (list in Settings › Device modes)", source: "deviceModes", strict: true },
+      { key: "deviceResource", label: "Device Resource", help: "PXI chassis resource address, e.g. PXI1Slot2", placeholder: "e.g. PXI1Slot2" },
+      { key: "fpgaBitFile", label: "Bit File", help: "FPGA bit file (.lvbitx) from the fpga_bitfile folder; saved with its full path", source: "bitfiles", strict: true },
+      { key: "dataloggerCommands", label: "Datalogger Configuration", required: false, help: "Datalogger configuration (.json) from the datalogger_configuration folder; saved with its full path", source: "dataloggers", strict: true },
+      { key: "fpgaBoardName", label: "FPGA Board Defaults", help: "FPGA board (Settings › FPGA board defaults); its values are saved as fpgaDefaults", source: "boardDefaults", strict: true },
     ],
     childTypes: ["testerChannel"],
-    childOptions: (n) => {
-      const free = TESTER_CHANNELS.filter((c) => !n.children.some((x) => x.params.channel === c));
+    childOptions: (n, idx) => {
+      const passthrough = /^passthrough/i.test(String(idx.ancestor(n, "testerMode")?.params.mode ?? ""));
+      const pool = passthrough ? SI_CHANNELS : TESTER_CHANNELS;
+      const free = pool.filter((c) => !n.children.some((x) => x.params.channel === c));
       return [{
-        label: "Add Channel", type: "testerChannel", icon: "stream", enabled: free.length > 0,
-        reason: free.length ? undefined : "all 16 channels (SI0–SI7, SO0–SO7) are used",
-        description: free.length ? `Next: ${free[0]} – with an I2C worker` : "A bench channel used by this camera model",
-        create: () => makeTesterChannel(n),
+        label: passthrough ? "Add Channel Pair" : "Add Channel", type: "testerChannel", icon: "stream", enabled: free.length > 0,
+        reason: free.length ? undefined : passthrough ? "all inputs SI0–SI7 are used" : "all 16 channels (SI0–SI7, SO0–SO7) are used",
+        description: free.length ? `Next: ${free[0]}${passthrough ? " → SO output" : ""} – with an I2C worker` : "A bench channel used by this camera model",
+        create: () => makeTesterChannel(n, idx.ancestor(n, "testerMode")?.params.mode),
       }];
     },
-    jsonOrder: ["cameraModel", "name", "deviceManufacturer", "deviceModel", "fpgaDevice", "deviceResources", "bitFile",
-      "dataloggerConfiguration", "fpgaBoardDefaults", "channels"],
-    defaultParams: () => ({ cameraModel: "", name: "", deviceManufacturer: "", deviceModel: "", fpgaDevice: "", deviceResources: "",
-      bitFile: "", dataloggerConfiguration: "", fpgaBoardDefaults: "" }),
+    jsonOrder: ["name", "cameraModel", "deviceResource", "deviceModel", "manufacturer", "fpgaBoardName", "deviceMode", "fpgaBitFile", "dataloggerCommands"],
+    defaultParams: () => ({ cameraModel: "", name: "", manufacturer: "", deviceModel: "", deviceMode: "", deviceResource: "",
+      fpgaBitFile: "", dataloggerCommands: "", fpgaBoardName: "" }),
     label: (n) => String(n.params.name || n.params.cameraModel || "(new camera model)"),
-    summary: (n) => [n.params.cameraModel, n.params.fpgaDevice, `${n.children.length} channel(s)`].filter(Boolean).join(" · "),
+    summary: (n) => [n.params.cameraModel, n.params.deviceModel, n.params.deviceMode, `${n.children.length} channel(s)`].filter(Boolean).join(" · "),
     create: (parent, idx, catalog) => {
       const p = DEFS.testerCamera.defaultParams();
       const mode = parent.params.mode;
@@ -684,10 +711,10 @@ export const DEFS: Record<NodeType, NodeDef> = {
       const cams = optionsFor("projectCameras", catalog, rec).values;
       p.cameraModel = cams.find((c) => !used.has(c)) ?? cams[0] ?? "";
       p.name = uniqueName(p.cameraModel || "Camera", new Set(parent.children.map((c) => c.params.name)));
-      p.deviceManufacturer = first("projectManufacturers", { ...p, $mode: mode });
+      p.manufacturer = first("projectManufacturers", { ...p, $mode: mode });
       p.deviceModel = first("projectDeviceModels", { ...p, $mode: mode });
-      p.fpgaDevice = first("fpgaDevices");
-      p.fpgaBoardDefaults = first("boardDefaults");
+      p.deviceMode = first("deviceModes");
+      p.fpgaBoardName = first("boardDefaults");
       void idx;
       return mk("testerCamera", p);
     },
@@ -696,30 +723,44 @@ export const DEFS: Record<NodeType, NodeDef> = {
       const name = n.params.name;
       if (name && idx.siblings(n).some((s) => s.params.name === name)) out.push(issue(ERROR, `Camera model name '${name}' is used more than once in this mode`, n, { field: "name" }));
       if (!n.children.length) out.push(issue(WARNING, "No channels defined – right-click the camera model to add one", n));
-      // FPGA device vs bit file: bit files are built per device (…_NI1487_…lvbitx)
-      const dev = /(\d{4})\s*$/.exec(String(n.params.fpgaDevice ?? ""))?.[1];
-      const bit = /NI(\d{4})/i.exec(String(n.params.bitFile ?? ""))?.[1];
+      // bit files are built per capture card and IO density: FPGA_4IN4OUT_NI1487_…, FPGA_8IN_NI1486_…
+      const bitFile = String(n.params.fpgaBitFile ?? "");
+      const bit = /NI(\d{4})/i.exec(bitFile)?.[1];
+      const dev = /(\d{4})\s*$/.exec(String(n.params.deviceModel ?? ""))?.[1];
       if (dev && bit && dev !== bit)
-        out.push(issue(WARNING, `Bit file ${n.params.bitFile} is built for NI${bit}, not for ${n.params.fpgaDevice}`, n, { field: "bitFile" }));
+        out.push(issue(WARNING, `Bit file ${bitFile} is built for NI${bit}, not for ${n.params.deviceModel}`, n, { field: "fpgaBitFile" }));
+      const density = bitFileDeviceMode(bitFile);
+      if (density && n.params.deviceMode && density !== n.params.deviceMode)
+        out.push(issue(WARNING, `Bit file ${bitFile} is a ${density} build, but Device Mode is ${n.params.deviceMode}`, n, { field: "deviceMode" }));
       return out;
     },
   },
 
   testerChannel: {
     type: "testerChannel", title: "Channel", icon: "stream", singleton: false,
-    description: "A bench channel used by the camera model: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). It always has an I2C worker; right-click to add the virtual channels it carries.",
+    description: "A bench channel of the camera model. CaptureMode: one channel (SI0–SI7 or SO0–SO7). PassthroughMode: an input (SI) and the output (SO) it is passed to. It always has an I2C worker; right-click to add the virtual channels it carries.",
     fields: [
-      { key: "channel", label: "Channel", kind: "enum", options: TESTER_CHANNELS, help: "SI0–SI7 (inputs) or SO0–SO7 (outputs)" },
-      { key: "name", label: "Channel Name", pattern: /\S/, hint: "must not be blank", help: "Name of the signal on this channel, e.g. Front", placeholder: "e.g. Front" },
-      { key: "pocMode", label: "PoC Mode", kind: "bool", required: false, help: "Power over Coax: supply the camera over the coax cable" },
-      { key: "streamingMode", label: "Streaming Mode", kind: "bool", required: false, help: "Stream the image data of this channel" },
-      { key: "i2cInitFile", label: "I2C Initialisation File", required: false, help: "I2C initialisation script (.txt) from the i2c_configuration folder", source: "i2cFiles", strict: true },
+      { key: "channel", label: "Channel", kind: "enum", options: TESTER_CHANNELS, help: "SI0–SI7 (inputs) or SO0–SO7 (outputs); the input in PassthroughMode" },
+      { key: "channelName", label: "Channel Name", pattern: /\S/, hint: "must not be blank", help: "Name of the signal on this channel, e.g. Front or CH0_In", placeholder: "e.g. Front" },
+      { key: "pocMode", label: "PoC Mode", kind: "enum", options: POC_MODES, help: "Power over Coax: Internal, Auxiliary or None" },
+      { key: "streamingMode", label: "Streaming Mode", kind: "enum", options: STREAMING_MODES, help: "Single or Continuous" },
+      { key: "i2cCommands", label: "I2C Commands File", required: false, help: "I2C initialisation script (.txt) from the i2c_configuration folder; saved with its full path", source: "i2cFiles", strict: true },
+      { key: "outputChannel", label: "Output Channel", kind: "enum", options: SO_CHANNELS, help: "Serializer output the input is passed to", showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "outputChannelName", label: "Output Channel Name", pattern: /\S/, hint: "must not be blank", help: "e.g. CH0_Out", showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "outputPocMode", label: "Output PoC Mode", kind: "enum", options: POC_MODES, help: "Power over Coax of the output", showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "outputI2cCommands", label: "Output I2C Commands File", required: false, help: "I2C script (.txt) for the serializer side", source: "i2cFiles", strict: true, showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "soCsiDataLane", label: "SO CSI Data Lanes", kind: "enum", options: SO_CSI_LANES, help: "MIPI CSI-2 lanes of the output", showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "soCsiDatarate", label: "SO CSI Data Rate (bit/s)", kind: "int", min: 1, help: "e.g. 1300000000", showInMode: "PassthroughMode", group: "Output (serializer)" },
+      { key: "cybersecurityEnable", label: "Cybersecurity", kind: "bool", required: false, help: "Enable the cybersecurity (authentication) check", group: "Cybersecurity" },
+      { key: "lvClass", label: "LV Class", required: false, help: "LabVIEW class implementing the check, e.g. X3F(OVT)", placeholder: "e.g. X3F(OVT)", group: "Cybersecurity" },
     ],
     childTypes: ["i2cWorker", "testerVc"],
-    jsonOrder: ["channel", "name", "pocMode", "streamingMode", "i2cInitFile", "i2cWorker", "virtualChannels"],
-    defaultParams: () => ({ channel: "SI0", name: "", pocMode: false, streamingMode: false, i2cInitFile: "" }),
-    label: (n) => (n.params.name ? `${n.params.channel} – ${n.params.name}` : String(n.params.channel || "(channel)")),
-    summary: (n) => [n.params.pocMode ? "PoC" : "", n.params.streamingMode ? "streaming" : "", `${n.children.filter((c) => c.type === "testerVc").length} virtual channel(s)`].filter(Boolean).join(" · "),
+    jsonOrder: ["channel", "channelName", "pocMode", "streamingMode", "i2cCommands"],
+    defaultParams: () => ({ channel: "SI0", channelName: "", pocMode: "Internal", streamingMode: "Single", i2cCommands: "",
+      outputChannel: "SO0", outputChannelName: "", outputPocMode: "Auxiliary", outputI2cCommands: "", soCsiDataLane: "4 Lane", soCsiDatarate: 1300000000,
+      cybersecurityEnable: false, lvClass: "" }),
+    label: (n) => (n.params.channelName ? `${n.params.channel} – ${n.params.channelName}` : String(n.params.channel || "(channel)")),
+    summary: (n) => [n.params.pocMode, n.params.streamingMode, `${n.children.filter((c) => c.type === "testerVc").length} virtual channel(s)`].filter(Boolean).join(" · "),
     childOptions: (n, idx, catalog) => [{
       label: "Add Virtual Channel", type: "testerVc", icon: "vc", enabled: true,
       description: "A virtual channel of the project camera model, with its frame analysis worker",
@@ -730,35 +771,43 @@ export const DEFS: Record<NodeType, NodeDef> = {
       create: () => mk("i2cWorker", DEFS.i2cWorker.defaultParams()),
     }])],
     checks: (n, idx) => {
+      const out: Issue[] = [];
       const ch = n.params.channel;
-      return ch && idx.siblings(n).some((s) => s.params.channel === ch)
-        ? [issue(ERROR, `Channel ${ch} is used more than once in this camera model`, n, { field: "channel" })] : [];
+      if (ch && idx.siblings(n).some((s) => s.params.channel === ch)) out.push(issue(ERROR, `Channel ${ch} is used more than once in this camera model`, n, { field: "channel" }));
+      if (/^passthrough/i.test(String(idx.ancestor(n, "testerMode")?.params.mode ?? ""))) {
+        if (ch && !String(ch).startsWith("SI")) out.push(issue(ERROR, `In PassthroughMode the input must be an SI channel, not ${ch}`, n, { field: "channel" }));
+        const o = n.params.outputChannel;
+        if (o && idx.siblings(n).some((s) => s.params.outputChannel === o)) out.push(issue(ERROR, `Output ${o} is used more than once in this camera model`, n, { field: "outputChannel" }));
+      }
+      if (n.params.cybersecurityEnable === true && !String(n.params.lvClass ?? "").trim())
+        out.push(issue(ERROR, "LV Class is required when cybersecurity is enabled", n, { field: "lvClass" }));
+      return out;
     },
   },
 
   i2cWorker: {
     type: "i2cWorker", title: "I2C Worker", icon: "ic", deletable: false,
-    description: "Worker that reads the I2C traffic of the channel while the bench runs: monitoring only, or monitoring and checking against expected values.",
+    description: "Worker that reads the I2C traffic of the channel while the bench runs: monitoring only, or monitoring and checking. With Monitoring & Checking, the register, error-count and temperature monitors of the project's I2C Monitoring of the camera model are shown here and saved as i2cCheckingConfig; with Monitoring only, i2cCheckingConfig is saved as null.",
     fields: [
-      { key: "option", label: "Option", kind: "enum", options: I2C_WORKER_OPTIONS, help: "Monitoring, or Monitoring and Checking" },
+      { key: "i2cWorkerMode", label: "I2C Worker Mode", kind: "enum", options: I2C_WORKER_OPTIONS, help: "Monitoring, or Monitoring & Checking" },
       { key: "pauseTime", label: "Pause Time (ms)", kind: "int", min: 0, max: 600000, help: "Pause between two I2C cycles in milliseconds" },
     ],
-    jsonOrder: ["option", "pauseTime"],
-    defaultParams: () => ({ option: I2C_WORKER_OPTIONS[0], pauseTime: 100 }),
+    jsonOrder: ["i2cWorkerMode", "pauseTime"],
+    defaultParams: () => ({ i2cWorkerMode: I2C_WORKER_OPTIONS[0], pauseTime: 100 }),
     label: () => "I2C Worker",
-    summary: (n) => `${n.params.option} · ${n.params.pauseTime} ms`,
+    summary: (n) => `${n.params.i2cWorkerMode} · ${n.params.pauseTime} ms`,
   },
 
   testerVc: {
     type: "testerVc", title: "Virtual Channel", icon: "vc", singleton: false, duplicable: true,
-    description: "A virtual channel of the project camera model carried on this bench channel. It always has a frame analysis worker.",
+    description: "A virtual channel of the project camera model carried on this bench channel. Its frame information is taken from the project and its debayer configuration from Settings when saving. It always has a frame analysis worker.",
     fields: [
-      { key: "virtualChannel", label: "Virtual Channel", kind: "int", help: "Virtual channel of the camera model in the selected project", source: "projectVcs", strict: true },
-      { key: "name", label: "Name", pattern: /\S/, hint: "must not be blank", help: "Name of this virtual channel on the bench, e.g. Front_VC0" },
-      { key: "debayer", label: "Debayer Configuration", help: "Debayer setting (list in Settings › Debayer configurations)", source: "debayerConfigs", strict: true },
+      { key: "virtualChannel", label: "Virtual Channel", kind: "int", help: "Virtual channel of the camera model in the selected project; saved as VC<n>", source: "projectVcs", strict: true },
+      { key: "name", label: "Name", pattern: /\S/, hint: "must not be blank", help: "Name of this virtual channel, e.g. Image" },
+      { key: "debayer", label: "Debayer Configuration", help: "Debayer configuration (Settings › Debayer configurations); saved as cameraDebayer + debayerConfiguration", source: "debayerConfigs", strict: true },
     ],
     childTypes: ["frameAnalysisWorker"],
-    jsonOrder: ["virtualChannel", "name", "debayer", "frameAnalysisWorker"],
+    jsonOrder: ["virtualChannel", "name", "debayer"],
     defaultParams: () => ({ virtualChannel: 0, name: "", debayer: "" }),
     label: (n) => (n.params.name ? `VC${n.params.virtualChannel} – ${n.params.name}` : `VC${n.params.virtualChannel}`),
     summary: (n) => [n.params.debayer].filter(Boolean).join(" · "),
@@ -770,7 +819,7 @@ export const DEFS: Record<NodeType, NodeDef> = {
       const num = v !== undefined ? Number(v) : 0;
       const name = v !== undefined && vcs.labels[v] ? vcs.labels[v] : `VC${num}`;
       return mk("testerVc", { virtualChannel: num, name, debayer: optionsFor("debayerConfigs", catalog).values[0] ?? "" },
-        [mk("frameAnalysisWorker", {})]);
+        [mk("frameAnalysisWorker", DEFS.frameAnalysisWorker.defaultParams())]);
     },
     checks: (n, idx) => {
       const v = n.params.virtualChannel;
@@ -781,9 +830,14 @@ export const DEFS: Record<NodeType, NodeDef> = {
 
   frameAnalysisWorker: {
     type: "frameAnalysisWorker", title: "Frame Analysis Worker", icon: "gauge", deletable: false,
-    description: "Worker that analyses the frames of the virtual channel while the bench runs. Its settings will be added here.",
-    defaultParams: () => ({}),
+    description: "Worker that analyses the frames of the virtual channel while the bench runs. Frame Verification checks every frame against the frame information of the project.",
+    fields: [
+      { key: "frameVerification", label: "Frame Verification", kind: "bool", required: false, help: "Check every frame (saved as \"Frame Verification\")" },
+    ],
+    jsonOrder: ["frameVerification"],
+    defaultParams: () => ({ frameVerification: true }),
     label: () => "Frame Analysis Worker",
+    summary: (n) => (n.params.frameVerification ? "Frame Verification" : "–"),
   },
 
   monitoring: {
@@ -1035,21 +1089,8 @@ export function nodeToJson(n: CNode): Json {
     }
     case "modes": case "cameras": case "frames":
       return n.children.map(nodeToJson);
-    case "tester":
-      return { tester: ordered({ ...n.params, modes: n.children.map(nodeToJson) }, def.jsonOrder!) };
-    case "testerMode":
-      return ordered({ ...n.params, cameraModels: n.children.map(nodeToJson) }, def.jsonOrder!);
-    case "testerCamera":
-      return ordered({ ...n.params, channels: n.children.map(nodeToJson) }, def.jsonOrder!);
-    case "testerChannel": {
-      const w = n.children.find((c) => c.type === "i2cWorker");
-      return ordered({ ...n.params, ...(w ? { i2cWorker: nodeToJson(w) } : {}),
-        virtualChannels: n.children.filter((c) => c.type === "testerVc").map(nodeToJson) }, def.jsonOrder!);
-    }
-    case "testerVc": {
-      const w = n.children.find((c) => c.type === "frameAnalysisWorker");
-      return ordered({ ...n.params, ...(w ? { frameAnalysisWorker: nodeToJson(w) } : {}) }, def.jsonOrder!);
-    }
+    case "tester": case "testerMode": case "testerCamera": case "testerChannel": case "testerVc":
+      return ordered({ ...n.params }, def.jsonOrder ?? []); // internal; files are written by ctpTester.exportTester
     case "hardware":
       return [...n.children.map(nodeToJson), ...structuredClone(n.unknown ?? [])];
     case "hwCapture": case "hwPassthrough":
@@ -1105,53 +1146,12 @@ export function newTesterDocument(projectFile: string): ConfigDocument {
   return { root: mk("tester", { ...DEFS.tester.defaultParams(), project: projectFile }), extraTop: {} };
 }
 
-function take(p: Json, key: string): Json {
-  const v = p[key];
-  delete p[key];
-  return v;
-}
-
-/** Camera › channels › (I2C worker, virtual channels › frame analysis worker). Missing workers are added. */
-function testerCameraFromJson(c: Json, path: string): CNode {
-  const cp = { ...asDict(c, path) };
-  const chans = cp.channels === undefined ? [] : asList(take(cp, "channels"), `${path}.channels`);
-  delete cp.channels;
-  return mk("testerCamera", cp, chans.map((ch, k) => {
-    const at = `${path}.channels[${k}]`;
-    const hp = { ...asDict(ch, at) };
-    const worker = take(hp, "i2cWorker");
-    const vcs = hp.virtualChannels === undefined ? [] : asList(take(hp, "virtualChannels"), `${at}.virtualChannels`);
-    delete hp.virtualChannels;
-    const kids = [mk("i2cWorker", worker === undefined ? DEFS.i2cWorker.defaultParams() : { ...asDict(worker, `${at}.i2cWorker`) })];
-    vcs.forEach((v, m) => {
-      const vp = { ...asDict(v, `${at}.virtualChannels[${m}]`) };
-      const fw = take(vp, "frameAnalysisWorker");
-      kids.push(mk("testerVc", vp, [mk("frameAnalysisWorker", fw === undefined ? {} : { ...asDict(fw, `${at}.virtualChannels[${m}].frameAnalysisWorker`) })]));
-    });
-    return mk("testerChannel", hp, kids);
-  }));
-}
-
-function testerFromJson(data: Json): ConfigDocument {
-  const params = { ...asDict(data.tester, "tester") };
-  const modes = asList(params.modes, "tester.modes");
-  delete params.modes;
-  const root = mk("tester", params);
-  modes.forEach((m, i) => {
-    const mp = { ...asDict(m, `tester.modes[${i}]`) };
-    const cams = asList(mp.cameraModels, `tester.modes[${i}].cameraModels`);
-    delete mp.cameraModels;
-    root.children.push(mk("testerMode", mp, cams.map((c, j) => testerCameraFromJson(c, `tester.modes[${i}].cameraModels[${j}]`))));
-  });
-  const extraTop: Json = {};
-  for (const k of Object.keys(data)) if (k !== "tester") extraTop[k] = data[k];
-  return { root, extraTop };
-}
-
 export function documentFromJson(data: Json): ConfigDocument {
   if (data === null || typeof data !== "object" || Array.isArray(data)) throw new LoadError("The top-level JSON value must be an object");
-  if ("tester" in data && !("project" in data)) return testerFromJson(data);
-  if (!("project" in data)) throw new LoadError("Missing root key 'project' (project configuration) or 'tester' (tester configuration)");
+  if ("cameraTester" in data) {
+    try { return importCameraTester(data); } catch (e) { throw new LoadError((e as Error).message); }
+  }
+  if (!("project" in data)) throw new LoadError("Missing root key 'project' (project configuration) or 'cameraTester' (tester configuration)");
   const params = { ...asDict(data.project, "project") };
   const { projectModes: pm, cameraModels: cms } = params;
   delete params.projectModes; delete params.cameraModels;
@@ -1173,11 +1173,16 @@ export function documentFromText(text: string): ConfigDocument {
   return documentFromJson(data);
 }
 
-export function documentToJson(doc: ConfigDocument): Json {
+/**
+ * The JSON of a document as saved. Tester configurations are written in the CTP format
+ * (cameraTester, see ctpTester.ts), filled in from the project and Settings in `catalog`.
+ */
+export function documentToJson(doc: ConfigDocument, catalog: Catalog = defaultCatalog()): Json {
+  if (doc.root.type === "tester") return structuredClone({ ...exportTester(doc.root, catalog), ...doc.extraTop });
   return structuredClone({ ...nodeToJson(doc.root), ...doc.extraTop });
 }
 
-export const documentToText = (doc: ConfigDocument) => JSON.stringify(documentToJson(doc), null, 2) + "\n";
+export const documentToText = (doc: ConfigDocument, catalog?: Catalog) => JSON.stringify(documentToJson(doc, catalog), null, 2) + "\n";
 
 // --------------------------------------------------------------------------
 // Validation
@@ -1185,7 +1190,7 @@ export const documentToText = (doc: ConfigDocument) => JSON.stringify(documentTo
 export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): Issue[] {
   const def = defOf(n);
   const out: Issue[] = [];
-  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, optionRecord(n, idx), catalog, (f) => featureEnabled(idx, f, catalog)))
+  if (def.fields) for (const [sev, key, msg] of checkFields(fieldsInMode(def.fields, n, idx), optionRecord(n, idx), catalog, (f) => featureEnabled(idx, f, catalog)))
     out.push(issue(sev, msg, n, { field: key || undefined }));
   for (const t of def.tables ?? []) out.push(...checkTable(n, t, getPath(n.params, t.key), t.key, catalog));
   if (def.checks) out.push(...def.checks(n, idx));
@@ -1195,6 +1200,8 @@ export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaul
 export function validateTree(root: CNode, idx = new TreeIndex(root), catalog: Catalog = defaultCatalog()): Issue[] {
   const out: Issue[] = [];
   for (const n of walk(root)) out.push(...validateNode(n, idx, catalog));
+  // tester: the file Save writes must pass tester_configuration.schema.json
+  if (root.type === "tester") out.push(...schemaIssues(root, catalog));
   return out;
 }
 

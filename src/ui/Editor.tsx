@@ -7,8 +7,10 @@ import {
 import { delPath, isEmpty, isRequired, kindOf, RANK, setPath, SERIAL_CHANNEL_MAX, type FieldSpec, type Json, type TableSpec } from "../core/schema";
 import type { Recipe } from "../state/store";
 import { cascadeHardware, cascadeTesterCamera, resolveSpec, type Catalog } from "../core/catalog";
-import { featureEnabled, findChild, optionRecord } from "../core/model";
+import { bitFileDeviceMode, featureEnabled, fieldsInMode, findChild, optionRecord } from "../core/model";
 import { FEATURE_EMC } from "../core/schema";
+import { i2cCheckingMonitoring } from "../core/ctpTester";
+import { DEFS } from "../core/model";
 
 /** Table spec with its catalog-backed columns turned into dropdowns. */
 const resolvedTable = (t: TableSpec, c: Catalog): TableSpec =>
@@ -38,6 +40,7 @@ type RowsFor = (path: (string | number)[]) => (fn: (rows: Json[]) => void, opts?
 const SECTION_REGISTRY: Partial<Record<NodeType, SectionRenderer>> = {
   hwPassthrough: (p) => <PassthroughSection {...p} />,
   vc: (p) => <VirtualChannelSection {...p} />,
+  i2cWorker: (p) => <I2cCheckingSection {...p} />,
 };
 
 export function Editor(props: EditorProps) {
@@ -69,12 +72,19 @@ export function Editor(props: EditorProps) {
       if ((node.type === "hwCapture" || node.type === "hwPassthrough") && (spec.key === "manufacture" || spec.key === "model"))
         cascadeHardware(params, props.catalog);
       // tester camera: another project camera model / manufacturer narrows the device lists
-      if (node.type === "testerCamera" && (spec.key === "cameraModel" || spec.key === "deviceManufacturer"))
+      if (node.type === "testerCamera" && (spec.key === "cameraModel" || spec.key === "manufacturer"))
         cascadeTesterCamera(params, props.catalog, idx.ancestor(node, "testerMode")?.params.mode);
+      // a bit file is built for one IO density: FPGA_8IN_… → 8in, FPGA_4IN4OUT_… → 4in/4out
+      if (node.type === "testerCamera" && spec.key === "fpgaBitFile") {
+        const dm = bitFileDeviceMode(String(params.fpgaBitFile ?? ""));
+        if (dm) params.deviceMode = dm;
+      }
     }, `${node.id}:${spec.key}`);
   const rec = optionRecord(node, idx);
   const on = (feature: string) => featureEnabled(idx, feature, props.catalog);
-  const plainFields = (def.fields ?? []).filter((f) => !f.requiresFeature && (!f.showIf || on(f.showIf)));
+  const visible = fieldsInMode(def.fields ?? [], node, idx).filter((f) => !f.requiresFeature && (!f.showIf || on(f.showIf)));
+  const plainFields = visible.filter((f) => !f.group);
+  const groups = [...new Set(visible.filter((f) => f.group).map((f) => f.group!))];
 
   const custom = SECTION_REGISTRY[node.type];
   const opts = childOptions(node, idx, props.catalog);
@@ -108,6 +118,13 @@ export function Editor(props: EditorProps) {
               params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
+        {groups.map((g) => (
+          <section className="card" key={g}>
+            <h3 className="card-title">{g}</h3>
+            <FieldForm nodeId={node.id} fields={visible.filter((f) => f.group === g).map((f) => resolveSpec(f, props.catalog, rec))}
+              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
+          </section>
+        ))}
         {[...new Set((def.fields ?? []).map((f) => f.requiresFeature).filter((f): f is string => !!f))].map((feature) => (
           <FeatureSection key={feature} feature={feature} on={on(feature)} idx={idx} onSelect={onSelect}>
             <FieldForm nodeId={node.id} fields={def.fields!.filter((f) => f.requiresFeature === feature).map((f) => resolveSpec(f, props.catalog, rec))}
@@ -315,5 +332,43 @@ function VirtualChannelSection({ node, issues, rowsFor, focus, catalog }: Editor
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * I2C Worker: with "Monitoring & Checking" the worker checks the values against the camera model's
+ * I2C Monitoring of the project (saved as i2cCheckingConfig). Shown read-only – it is edited in the project.
+ */
+function I2cCheckingSection({ node, idx, catalog }: EditorProps & { rowsFor: RowsFor }) {
+  const [tab, setTab] = useState(0);
+  const { checking, monitoring, cameraModel } = i2cCheckingMonitoring(node, idx, catalog);
+  if (!checking) return null;
+  const tables = DEFS.monitoring.tables!;
+  const t = tables[Math.min(tab, tables.length - 1)];
+  const project = catalog.ctx?.project;
+  return (
+    <section className="card card-flush" data-testid="i2c-checking-config">
+      <div className="card-title-row" style={{ padding: "12px 16px 0" }}>
+        <h3 className="card-title">I2C Checking Config</h3>
+        <span className="muted">From the project's I2C Monitoring of {cameraModel ? `'${cameraModel}'` : "the camera model"} · edit it in the project</span>
+      </div>
+      {!project?.root ? (
+        <p className="muted" style={{ padding: "8px 16px 16px" }}>The project of this tester is not loaded, so its I2C Monitoring can't be shown.</p>
+      ) : !monitoring ? (
+        <p className="muted" style={{ padding: "8px 16px 16px" }}>The camera model has no I2C Monitoring in the project. Add it there to define what is checked.</p>
+      ) : (
+        <>
+          <div className="tabs" role="tablist">
+            {tables.map((s, i) => (
+              <button key={s.key} role="tab" aria-selected={i === tab} className={`tab ${i === tab ? "active" : ""}`} onClick={() => setTab(i)}>
+                {s.icon && <NodeIcon name={s.icon as IconName} size={16} />}{s.title}<span className="count">{(monitoring.params[s.key] ?? []).length}</span>
+              </button>
+            ))}
+          </div>
+          <DataTable key={t.key} spec={t} rows={monitoring.params[t.key]} tableId={`i2cCheck-${t.key}`} issues={[]} onRows={() => {}}
+            hideTitle readOnly disabledHint={`No ${t.itemName.toLowerCase()}s in the project.`} />
+        </>
+      )}
+    </section>
   );
 }

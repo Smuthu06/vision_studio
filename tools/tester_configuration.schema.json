@@ -1,0 +1,1313 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CameraTesterConfiguration",
+  "description": "JSON Schema for Camera Test Platform (CTP) Tester Configurations",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "cameraTester"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cameraTester": {
+          "$ref": "#/definitions/CameraTester"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "project"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "$ref": "#/definitions/ProjectConfiguration"
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "CameraTester": {
+      "type": "object",
+      "required": [
+        "author",
+        "emailAddress",
+        "date",
+        "applicationName",
+        "version",
+        "serviceName",
+        "project",
+        "testModes"
+      ],
+      "properties": {
+        "author": {
+          "type": "string",
+          "description": "Author or developer username"
+        },
+        "emailAddress": {
+          "type": "string",
+          "description": "Email address of the author"
+        },
+        "date": {
+          "type": "string",
+          "description": "Creation or modification date (DD/MM/YYYY or DD-MM-YYYY)"
+        },
+        "applicationName": {
+          "type": "string",
+          "description": "Name of the tester application"
+        },
+        "version": {
+          "type": "string",
+          "description": "Configuration version (e.g. V.1.0.0)"
+        },
+        "serviceName": {
+          "type": "string",
+          "description": "Service name or identifier"
+        },
+        "project": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Project name"
+            },
+            "version": {
+              "type": "string",
+              "description": "Project version"
+            }
+          },
+          "additionalProperties": true
+        },
+        "testModes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TestMode"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "TestMode": {
+      "type": "object",
+      "required": [
+        "mode",
+        "features",
+        "hardwareInfo",
+        "cameraModels"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "CaptureMode",
+            "PassthroughMode"
+          ]
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "DataLogger",
+              "FaultInjection",
+              "EMCFeatures"
+            ]
+          }
+        },
+        "multiple_display": {
+          "type": "boolean",
+          "description": "Optional flag for enabling multiple display windows"
+        },
+        "hardwareInfo": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HardwareInfo"
+          }
+        },
+        "cameraModels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CameraModel"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "HardwareInfo": {
+      "type": "object",
+      "required": [
+        "manufacture",
+        "model",
+        "deserializer"
+      ],
+      "properties": {
+        "manufacture": {
+          "type": "string",
+          "description": "Hardware manufacturer (e.g. NationalInstruments, Solectrix)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Hardware capture card model (e.g. NI1487, NI1486, NI1488, NI1489)"
+        },
+        "deserializer": {
+          "type": "string",
+          "description": "Deserializer chip (e.g. MAX96716A, DS90UB954, MAX9296A)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "CameraModel": {
+      "type": "object",
+      "required": [
+        "name",
+        "deviceResource",
+        "deviceModel",
+        "channelInfo",
+        "fpgaBitFile",
+        "cameraModel",
+        "dataloggerCommands",
+        "fifoCommands",
+        "manufacturer",
+        "fpgaBoardName",
+        "fpgaDefaults",
+        "deviceMode",
+        "operatingVoltage",
+        "imager",
+        "packetFromat",
+        "channelConfiguration"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "deviceResource": {
+          "type": "string",
+          "description": "PXI slot or resource identifier (e.g. PXI1Slot2)"
+        },
+        "deviceModel": {
+          "type": "string",
+          "description": "Hardware device model (e.g. NI1487)"
+        },
+        "channelInfo": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ChannelInfo"
+          }
+        },
+        "fpgaBitFile": {
+          "type": "string",
+          "description": "Path to FPGA bitfile or bitstream"
+        },
+        "cameraModel": {
+          "type": "string",
+          "description": "Camera model identifier"
+        },
+        "dataloggerCommands": {
+          "type": "string",
+          "description": "Datalogger configuration or commands path"
+        },
+        "fifoCommands": {
+          "type": "object",
+          "properties": {
+            "_comments": {
+              "type": "string"
+            },
+            "0x01": {
+              "$ref": "#/definitions/FifoCommandChannel"
+            },
+            "0x02": {
+              "$ref": "#/definitions/FifoCommandWorker"
+            },
+            "frameMeasurementWorker": {
+              "$ref": "#/definitions/FifoFrameMeasurementWorker"
+            },
+            "I2CWorker": {
+              "$ref": "#/definitions/FifoI2CWorker"
+            }
+          },
+          "additionalProperties": true
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "fpgaBoardName": {
+          "type": "string"
+        },
+        "fpgaDefaults": {
+          "$ref": "#/definitions/FpgaDefaults"
+        },
+        "deviceMode": {
+          "type": "string",
+          "description": "Operating mode (e.g. 4in/4out, 8in, 4in)"
+        },
+        "operatingVoltage": {
+          "type": [
+            "number",
+            "integer"
+          ],
+          "description": "Camera power supply voltage in Volts (e.g. 12, 10)"
+        },
+        "imager": {
+          "type": "string",
+          "description": "Sensor / Imager type (e.g. x3f, x1f, SONY_IMX728, Samsung_ES3)"
+        },
+        "packetFromat": {
+          "type": "string",
+          "description": "Pixel / packet format (e.g. raw12, yuv422 8bit, raw8, raw16)"
+        },
+        "serializer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Serializer IC model (e.g. MAX96717, MAX96719F)"
+        },
+        "channelConfiguration": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ChannelConfiguration"
+          }
+        },
+        "reactionAnalysis": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "reaction_analysis": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ReactionAnalysisItem"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "gpioRouting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GpioRoutingItem"
+          }
+        },
+        "eeprom": {
+          "type": "object",
+          "properties": {
+            "Lenght": {
+              "type": "integer"
+            },
+            "Address": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "Register": {
+              "type": "integer"
+            },
+            "WData/Rlen": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "imagerAddress": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "eepromHashRegAddress": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "lenghtHash": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "ChannelInfo": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Channel",
+            "Name"
+          ],
+          "properties": {
+            "Channel": {
+              "type": "string",
+              "description": "Physical channel name (e.g. SI1, SI2)"
+            },
+            "Name": {
+              "type": "string",
+              "description": "Logical channel name"
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "inputChannel",
+            "name"
+          ],
+          "properties": {
+            "inputChannel": {
+              "type": "string",
+              "description": "Input physical channel (e.g. SI1)"
+            },
+            "name": {
+              "type": "string",
+              "description": "Logical channel name"
+            },
+            "outputChannel": {
+              "type": "string",
+              "description": "Output physical channel (e.g. SO1)"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "FpgaDefaults": {
+      "type": "object",
+      "properties": {
+        "SI_Ref_Clk_Freq_(Hz)": {
+          "type": "integer"
+        },
+        "SO_Ref_Clk_Freq_(Hz)": {
+          "type": "integer"
+        },
+        "Frames_on_DMA_Buffer": {
+          "type": "integer"
+        },
+        "Frame_Sync_Window_(# of Frames)": {
+          "type": "integer"
+        },
+        "Frame_Sync_Tolerance_(us)": {
+          "type": "integer"
+        },
+        "LLP_FIFO_Depth": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "FifoCommandChannel": {
+      "type": "object",
+      "required": [
+        "name",
+        "address[0:7]"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "address[0:7]": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "FifoCommandWorker": {
+      "type": "object",
+      "required": [
+        "name",
+        "address[0:7]"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "address[0:7]": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "FifoFrameMeasurementWorker": {
+      "type": "object",
+      "properties": {
+        "0x0A": {
+          "type": "object"
+        },
+        "VC0": {
+          "type": "object"
+        },
+        "VC1": {
+          "type": "object"
+        },
+        "VC2": {
+          "type": "object"
+        },
+        "VC3": {
+          "type": "object"
+        },
+        "VC4": {
+          "type": "object"
+        },
+        "0xF0": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "FifoI2CWorker": {
+      "type": "object",
+      "properties": {
+        "MemoryMap": {
+          "type": "object"
+        },
+        "_comments": {
+          "type": "string"
+        },
+        "Memory_Complete": {
+          "type": "string"
+        },
+        "I2C_Complete": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ChannelConfiguration": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/DirectChannelConfiguration"
+        },
+        {
+          "$ref": "#/definitions/PassthroughChannelConfiguration"
+        }
+      ]
+    },
+    "DirectChannelConfiguration": {
+      "type": "object",
+      "required": [
+        "channel",
+        "channelName",
+        "i2cCommands",
+        "pocMode",
+        "streamingMode",
+        "vcConfiguration"
+      ],
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "Serial input channel (e.g. SI1)"
+        },
+        "channelName": {
+          "type": "string"
+        },
+        "i2cCommands": {
+          "type": "string",
+          "description": "File path to I2C initialization commands script"
+        },
+        "pocMode": {
+          "type": "string",
+          "enum": [
+            "Internal",
+            "Auxiliary",
+            "None",
+            ""
+          ]
+        },
+        "streamingMode": {
+          "type": "string",
+          "enum": [
+            "Single",
+            "Continuous",
+            ""
+          ]
+        },
+        "vcConfiguration": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VirtualChannelConfiguration"
+          }
+        },
+        "i2cWorker": {
+          "$ref": "#/definitions/I2CWorkerConfiguration"
+        },
+        "cybersecurity": {
+          "$ref": "#/definitions/CybersecurityConfiguration"
+        }
+      },
+      "additionalProperties": true
+    },
+    "PassthroughChannelConfiguration": {
+      "type": "object",
+      "required": [
+        "input",
+        "output"
+      ],
+      "properties": {
+        "input": {
+          "type": "object",
+          "required": [
+            "channel",
+            "channelName",
+            "i2cCommands",
+            "pocMode",
+            "streamingMode",
+            "vcConfiguration"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "channelName": {
+              "type": "string"
+            },
+            "i2cCommands": {
+              "type": "string"
+            },
+            "pocMode": {
+              "type": "string"
+            },
+            "streamingMode": {
+              "type": "string"
+            },
+            "vcConfiguration": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VirtualChannelConfiguration"
+              }
+            },
+            "i2cWorker": {
+              "$ref": "#/definitions/I2CWorkerConfiguration"
+            }
+          },
+          "additionalProperties": true
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "channel",
+            "channelName",
+            "i2cCommands",
+            "pocMode",
+            "soCsiDataLane",
+            "SoCsiDatarate"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "channelName": {
+              "type": "string"
+            },
+            "i2cCommands": {
+              "type": "string"
+            },
+            "pocMode": {
+              "type": "string"
+            },
+            "soCsiDataLane": {
+              "type": "string",
+              "enum": [
+                "2 Lane",
+                "4 Lane"
+              ]
+            },
+            "SoCsiDatarate": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true
+        },
+        "cybersecurity": {
+          "$ref": "#/definitions/CybersecurityConfiguration"
+        }
+      },
+      "additionalProperties": true
+    },
+    "VirtualChannelConfiguration": {
+      "type": "object",
+      "required": [
+        "virtualChannel",
+        "name",
+        "frameInfo",
+        "cameraDebayer",
+        "debayerConfiguration",
+        "frameAnalysisWorker"
+      ],
+      "properties": {
+        "virtualChannel": {
+          "type": "string",
+          "description": "Virtual channel ID (e.g. VC0, VC1, VC2, VC3)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Virtual channel name"
+        },
+        "frameInfo": {
+          "$ref": "#/definitions/FrameInfo"
+        },
+        "cameraDebayer": {
+          "type": "string",
+          "description": "Debayer processing algorithm / vendor identifier"
+        },
+        "debayerConfiguration": {
+          "$ref": "#/definitions/DebayerConfiguration"
+        },
+        "frameAnalysisWorker": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FrameAnalysisWorkerItem"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "FrameInfo": {
+      "type": "object",
+      "required": [
+        "virtualChannelNumber",
+        "virtualChannelName",
+        "fps",
+        "frameOutput"
+      ],
+      "properties": {
+        "virtualChannelNumber": {
+          "type": "integer"
+        },
+        "virtualChannelName": {
+          "type": "string"
+        },
+        "fps": {
+          "type": "object",
+          "required": [
+            "max",
+            "min"
+          ],
+          "properties": {
+            "max": {
+              "type": [
+                "number",
+                "integer"
+              ]
+            },
+            "min": {
+              "type": [
+                "number",
+                "integer"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "frameOutput": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FrameOutputItem"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "FrameOutputItem": {
+      "type": "object",
+      "required": [
+        "name",
+        "dataIdentifier",
+        "dataFormat",
+        "xSize",
+        "ySize"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Output frame section (e.g. Image, Header, Footer)"
+        },
+        "dataIdentifier": {
+          "type": "string",
+          "description": "MIPI CSI-2 Data Type identifier (e.g. 0x2C, 0x1E)"
+        },
+        "dataFormat": {
+          "type": "string",
+          "description": "Pixel format (e.g. raw12, raw8, raw16, yuv422 8bit, rgb888)"
+        },
+        "xSize": {
+          "type": "integer",
+          "description": "Frame width in pixels"
+        },
+        "ySize": {
+          "type": "integer",
+          "description": "Frame height in lines"
+        },
+        "embeddedLine": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EmbeddedLineItem"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "EmbeddedLineItem": {
+      "type": "object",
+      "required": [
+        "lineNumber",
+        "info"
+      ],
+      "properties": {
+        "lineNumber": {
+          "type": "integer"
+        },
+        "info": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EmbeddedLineInfoItem"
+          }
+        },
+        "tag_included": {
+          "type": "boolean"
+        },
+        "byte_order": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "EmbeddedLineInfoItem": {
+      "type": "object",
+      "required": [
+        "offset",
+        "length",
+        "name"
+      ],
+      "properties": {
+        "offset": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "Formula": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "DebayerConfiguration": {
+      "type": "object",
+      "required": [
+        "imageSize",
+        "inputFormat",
+        "outputFormat",
+        "conversionParams"
+      ],
+      "properties": {
+        "imageSize": {
+          "type": "object",
+          "required": [
+            "width",
+            "height"
+          ],
+          "properties": {
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true
+        },
+        "inputFormat": {
+          "$ref": "#/definitions/PixelDataFormat"
+        },
+        "outputFormat": {
+          "$ref": "#/definitions/PixelDataFormat"
+        },
+        "conversionParams": {
+          "type": "object",
+          "properties": {
+            "Conv_Param_1": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "PixelDataFormat": {
+      "type": "object",
+      "required": [
+        "dataSize",
+        "bitDepthPerChannel",
+        "useBigEndian"
+      ],
+      "properties": {
+        "dataSize": {
+          "type": "integer"
+        },
+        "bitDepthPerChannel": {
+          "type": "integer"
+        },
+        "useBigEndian": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "FrameAnalysisWorkerItem": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Frame Verification"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Height": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "Width": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "frameMeasurementCmd": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fps": {},
+                  "width": {},
+                  "height": {}
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "I2CWorkerConfiguration": {
+      "type": "object",
+      "required": [
+        "i2cWorkerMode"
+      ],
+      "properties": {
+        "i2cWorkerMode": {
+          "type": "string",
+          "enum": [
+            "Monitoring & Checking",
+            "Monitoring"
+          ]
+        },
+        "monitoringCmd": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "eventNumber": {
+              "type": "integer"
+            },
+            "dataStructure": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/I2CDataStructureItem"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "checkingCmd": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "eventNumber": {
+              "type": "integer"
+            },
+            "dataStructure": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/I2CDataStructureItem"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "pauseTime": {
+          "type": "integer"
+        },
+        "i2cCheckingConfig": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "register_monitor": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/RegisterMonitorItem"
+              }
+            },
+            "temperature_monitor": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TemperatureMonitorItem"
+              }
+            },
+            "error_count": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ErrorCountItem"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "i2cCheckingCmd": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "I2CDataStructureItem": {
+      "type": "object",
+      "required": [
+        "startFlag",
+        "endFlag",
+        "data",
+        "dataLength",
+        "fault"
+      ],
+      "properties": {
+        "startFlag": {
+          "type": "integer"
+        },
+        "endFlag": {
+          "type": "integer"
+        },
+        "data": {
+          "type": "object"
+        },
+        "dataLength": {
+          "type": "integer"
+        },
+        "fault": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "RegisterMonitorItem": {
+      "type": "object",
+      "required": [
+        "Mode",
+        "Slave Address",
+        "Register(s)",
+        "Mask",
+        "Expectation",
+        "Error String",
+        "Link Options"
+      ],
+      "properties": {
+        "Mode": {
+          "type": "string"
+        },
+        "Slave Address": {
+          "type": "integer"
+        },
+        "Register(s)": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "Mask": {
+          "type": "integer"
+        },
+        "Expectation": {
+          "type": "integer"
+        },
+        "Error String": {
+          "type": "string"
+        },
+        "Link Options": {
+          "type": "string"
+        },
+        "Bit Mode": {
+          "type": "string"
+        },
+        "Read Bytes": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "TemperatureMonitorItem": {
+      "type": "object",
+      "required": [
+        "Mode",
+        "Slave Address",
+        "Register(s)_IntegerBit",
+        "Max Limit",
+        "Min Limit",
+        "Description",
+        "Link Options",
+        "Value",
+        "Register(s)_FractionBit"
+      ],
+      "properties": {
+        "Mode": {
+          "type": "string"
+        },
+        "Slave Address": {
+          "type": "integer"
+        },
+        "Register(s)_IntegerBit": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "Max Limit": {
+          "type": "integer"
+        },
+        "Min Limit": {
+          "type": "integer"
+        },
+        "Description": {
+          "type": "string"
+        },
+        "Link Options": {
+          "type": "string"
+        },
+        "Value": {
+          "type": "integer"
+        },
+        "Register(s)_FractionBit": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ErrorCountItem": {
+      "type": "object",
+      "required": [
+        "Mode",
+        "Slave Address",
+        "Register(s)",
+        "Mask",
+        "Error Description",
+        "Link Options"
+      ],
+      "properties": {
+        "Mode": {
+          "type": "string"
+        },
+        "Slave Address": {
+          "type": "integer"
+        },
+        "Register(s)": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "Mask": {
+          "type": "integer"
+        },
+        "Error Description": {
+          "type": "string"
+        },
+        "Link Options": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ReactionAnalysisItem": {
+      "type": "object",
+      "required": [
+        "faultName",
+        "description",
+        "trigger",
+        "expectation"
+      ],
+      "properties": {
+        "faultName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "object",
+          "required": [
+            "source_worker",
+            "parameter_name",
+            "operator",
+            "value",
+            "trigger_data"
+          ],
+          "properties": {
+            "source_worker": {
+              "type": "string"
+            },
+            "parameter_name": {
+              "type": "string"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "trigger_data": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "expectation": {
+          "type": "object",
+          "required": [
+            "source_worker",
+            "parameter_name",
+            "operator",
+            "value",
+            "timeout_ms"
+          ],
+          "properties": {
+            "source_worker": {
+              "type": "string"
+            },
+            "parameter_name": {
+              "type": "string"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "timeout_ms": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "GpioRoutingItem": {
+      "type": "object",
+      "required": [
+        "direction",
+        "serialChannel",
+        "source",
+        "destination"
+      ],
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "SI to SO",
+            "SO to SI"
+          ]
+        },
+        "serialChannel": {
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "CybersecurityConfiguration": {
+      "type": "object",
+      "required": [
+        "enable",
+        "lvClass"
+      ],
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        },
+        "lvClass": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ProjectConfiguration": {
+      "type": "object",
+      "required": [
+        "author",
+        "date",
+        "project",
+        "projectModes",
+        "cameraModels",
+        "schemaVersion"
+      ],
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "emailAddress": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "projectModes": {
+          "type": "array"
+        },
+        "cameraModels": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
