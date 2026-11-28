@@ -6,7 +6,7 @@ project_configuration/{sample_v1.0.0.json (EMCfeature on), noemc_v1.0.0.json}, <
 
 Usage: python e2e/tester.py http://127.0.0.1:8766/ /path/to/bench
 """
-import json, os, sys
+import json, os, re, subprocess, sys
 from playwright.sync_api import sync_playwright
 
 URL, BENCH = sys.argv[1], sys.argv[2]
@@ -14,14 +14,17 @@ OUT = os.environ.get("SHOTS", "/tmp/e")
 TESTER_DIR = f"{BENCH}/configurations/tester_configuration"
 errors = []
 
+def lab(label):  # whole label: "Device Mode" must not match "Device Model"
+    return re.compile(rf"^\s*{re.escape(label)}(?![A-Za-z])")
+
 def field(page, label):
-    return page.locator(".form-row", has=page.locator(".form-label", has_text=label)).first.locator("input, select").first
+    return page.locator(".form-row", has=page.locator(".form-label", has_text=lab(label))).first.locator("input, select").first
 
 def chosen(sel):
     return sel.evaluate("e => e.options[e.selectedIndex].text")
 
 def has_field(page, label):
-    return page.locator(".form-label", has_text=label).count() > 0
+    return page.locator(".form-label", has_text=lab(label)).count() > 0
 
 def file_menu(page, top, sub):
     page.click("#file-menu-btn")
@@ -67,9 +70,10 @@ with sync_playwright() as p:
 
     new_tester(page, "sample_v1.0.0.json")
     assert chosen(field(page, "Project Configuration")) == "sample_v1.0.0.json"
-    field(page, "Tester Name").fill("HIL_Bench")
+    field(page, "Application Name").fill("HIL_Bench")
     field(page, "Author").fill("engineer")
     field(page, "Email Address").fill("engineer@company.com")
+    assert re.match(r"^\d{2}[/-]\d{2}[/-]\d{4}$", field(page, "Date").input_value())
     page.keyboard.press("Tab")
 
     # right-click tester → Add Mode; modes come from the project, Multiple Display because of EMCfeature
@@ -85,14 +89,14 @@ with sync_playwright() as p:
     assert options(field(page, "Camera Model")) == ["ADAS_Camera_Model_A"]
     assert chosen(field(page, "Device Manufacturer")) == "NationalInstruments"
     assert options(field(page, "Device Model")) == ["NI1487"]
-    assert "PXIe-1487 – Kintex UltraScale KU11P" in options(field(page, "FPGA Device"))
+    assert [o.split(" – ")[0] for o in options(field(page, "Device Mode"))][:3] == ["8in", "4in/4out", "4in"]
     bits = options(field(page, "Bit File"))
     assert sorted(b for b in bits if b.endswith(".lvbitx")) == sorted(os.listdir(f"{BENCH}/fpga_bitfile")), bits
     assert "front_logger.json" in options(field(page, "Datalogger Configuration"))
     field(page, "Camera Model Name").fill("Front_Left")
-    field(page, "FPGA Device").select_option(label="PXIe-1487 – Kintex UltraScale KU11P")
-    field(page, "Device Resources").fill("RIO0")
+    field(page, "Device Resource").fill("PXI1Slot2")
     field(page, "Bit File").select_option(label="FPGA_8IN_NI1486_capture_v10.0.0.lvbitx")
+    assert chosen(field(page, "Device Mode")).startswith("8in"), "device mode follows the bit file"
     field(page, "Datalogger Configuration").select_option(label="front_logger.json")
     page.keyboard.press("Tab")
     assert page.locator(".tree-row", has_text="Front_Left").count() == 1, "custom name is shown in the tree"
@@ -103,17 +107,20 @@ with sync_playwright() as p:
     page.locator(".tree-row", has_text="SI0").first.click()
     chans = options(field(page, "Channel"))
     assert chans == [f"SI{i}" for i in range(8)] + [f"SO{i}" for i in range(8)], chans
+    assert not has_field(page, "Output Channel"), "output only in PassthroughMode"
     field(page, "Channel Name").fill("Front")
-    page.locator(".form-row", has=page.locator(".form-label", has_text="PoC Mode")).locator(".switch").click()
-    assert "front_init.txt" in options(field(page, "I2C Initialisation File"))
-    field(page, "I2C Initialisation File").select_option(label="front_init.txt")
+    assert options(field(page, "PoC Mode")) == ["Internal", "Auxiliary", "None"]
+    assert options(field(page, "Streaming Mode")) == ["Single", "Continuous"]
+    field(page, "Streaming Mode").select_option(label="Continuous")
+    assert "front_init.txt" in options(field(page, "I2C Commands File"))
+    field(page, "I2C Commands File").select_option(label="front_init.txt")
     page.keyboard.press("Tab")
     assert page.locator(".tree-row", has_text="SI0 – Front").count() == 1
 
-    # I2C worker: option + pause time
+    # I2C worker: mode + pause time
     page.locator(".tree-row", has_text="I2C Worker").first.click()
-    assert options(field(page, "Option")) == ["Monitoring", "Monitoring and Checking"]
-    field(page, "Option").select_option(label="Monitoring and Checking")
+    assert options(field(page, "I2C Worker Mode")) == ["Monitoring", "Monitoring & Checking"]
+    field(page, "I2C Worker Mode").select_option(label="Monitoring & Checking")
     field(page, "Pause Time").fill("250")
     page.keyboard.press("Tab")
 
@@ -125,33 +132,47 @@ with sync_playwright() as p:
     deb = options(field(page, "Debayer Configuration"))
     assert "YUV422_YUYV_to_RGB – 1920×1080 YUV 422_YUYV → RGB BGRA" in deb, deb
     field(page, "Debayer Configuration").select_option(label="YUV422_YUYV_to_RGB – 1920×1080 YUV 422_YUYV → RGB BGRA")
-    field(page, "Name").fill("Front_VC0")
+    field(page, "Name").fill("Image")
     page.keyboard.press("Tab")
     page.screenshot(path=f"{OUT}/tester_vc.png")
 
-    # a second channel: next free one, changed to SO1
-    node_menu(page, "Front_Left", "Add Channel")
-    page.locator(".tree-row", has_text="SI1").first.click()
-    field(page, "Channel").select_option(label="SO1")
-    field(page, "Channel Name").fill("ECU")
-    page.keyboard.press("Tab")
-    node_menu(page, "SO1 – ECU", "Add Virtual Channel")
-    page.locator(".tree-row", has_text="SI0 – Front").first.click()
-    page.wait_for_timeout(200)
-    page.screenshot(path=f"{OUT}/tester_channel.png")
-
-    page.locator(".tree-row", has_text="Front_Left").first.click()
-    # wrong bit file for the device → warning after Validate
+    # PassthroughMode: channel pairs with an output card
+    node_menu(page, "HIL_Bench", "Add Mode")
+    node_menu(page, "PassthroughMode", "Add Camera Model")
+    page.locator(".tree-row", has_text="PassthroughMode").first.click()
+    rows = page.locator(".tree-row", has_text="ADAS_Camera_Model_A")
+    rows.last.click(button="right")
+    page.locator(".menu-item", has_text="Add Channel Pair").click()
+    page.wait_for_timeout(250)
+    page.locator(".tree-row", has_text="SI0").last.click()
+    assert options(field(page, "Output Channel")) == [f"SO{i}" for i in range(8)]
+    field(page, "Channel Name").fill("CH0_In")
+    field(page, "Output Channel Name").fill("CH0_Out")
+    assert options(field(page, "SO CSI Data Lanes")) == ["2 Lane", "4 Lane"]
+    page.locator(".form-row", has=page.locator(".form-label", has_text="Cybersecurity")).locator(".switch").click()
     page.keyboard.press("F5")
     page.wait_for_timeout(300)
-    probs = page.locator(".bottom").inner_text() if page.locator(".bottom").count() else page.content()
-    assert "built for NI1486, not for PXIe-1487" in probs, probs[:2000]
+    assert "LV Class is required when cybersecurity is enabled" in page.locator(".bottom").inner_text()
+    page.locator(".tree-row", has_text="SI0 – CH0_In").first.click()
+    field(page, "LV Class").fill("X3F(OVT)")
+    page.keyboard.press("Tab")
+    page.screenshot(path=f"{OUT}/tester_passthrough.png")
+    rows.last.click()
+    field(page, "Device Resource").fill("PXI1Slot8")
     field(page, "Bit File").select_option(label="FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx")
+    page.keyboard.press("Tab")
+
+    # wrong bit file for the device → warnings after Validate; then the matching one
+    page.locator(".tree-row", has_text="Front_Left").first.click()
+    probs = page.locator(".bottom").inner_text()
+    assert "built for NI1486, not for NI1487" in probs, probs[:2000]
+    field(page, "Bit File").select_option(label="FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx")
+    assert chosen(field(page, "Device Mode")).startswith("4in/4out")
     page.keyboard.press("Tab")
     page.wait_for_timeout(200)
     page.screenshot(path=f"{OUT}/tester_camera.png")
 
-    # Save: <tester>_v<version>.json in the tester folder, no name prompt
+    # Save: <application>_v<version>.json in the tester folder, no name prompt
     page.keyboard.press("Control+s")
     page.wait_for_timeout(400)
     if page.locator(".modal h3", has_text="Configuration has errors").count():
@@ -159,25 +180,30 @@ with sync_playwright() as p:
         raise SystemExit("unexpected validation errors: " + page.locator(".bottom").inner_text())
     page.wait_for_selector(".toast-success")
     assert os.listdir(TESTER_DIR) == ["HIL_Bench_v1.0.0.json"], os.listdir(TESTER_DIR)
-    data = json.load(open(f"{TESTER_DIR}/HIL_Bench_v1.0.0.json"))
-    t = data["tester"]
-    assert t["project"] == "sample_v1.0.0.json" and t["testerName"] == "HIL_Bench"
-    m = t["modes"][0]
-    assert m["mode"] == "CaptureMode" and m["multipleDisplay"] is True
+    saved = f"{TESTER_DIR}/HIL_Bench_v1.0.0.json"
+    t = json.load(open(saved))["cameraTester"]
+    assert t["applicationName"] == t["serviceName"] == "HIL_Bench" and t["project"] == {"name": "sample", "version": "V.1.0.0"}
+    m = t["testModes"][0]
+    assert m["mode"] == "CaptureMode" and m["multiple_display"] is True and m["features"] == ["DataLogger", "EMCFeatures"], m
     cam = m["cameraModels"][0]
-    assert cam == {
-        "cameraModel": "ADAS_Camera_Model_A", "name": "Front_Left", "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487",
-        "fpgaDevice": "PXIe-1487", "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
-        "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "board1",
-        "channels": [
-            {"channel": "SI0", "name": "Front", "pocMode": True, "streamingMode": False, "i2cInitFile": "front_init.txt",
-             "i2cWorker": {"option": "Monitoring and Checking", "pauseTime": 250},
-             "virtualChannels": [{"virtualChannel": 0, "name": "Front_VC0", "debayer": "YUV422_YUYV_to_RGB", "frameAnalysisWorker": {}}]},
-            {"channel": "SO1", "name": "ECU", "pocMode": False, "streamingMode": False, "i2cInitFile": "",
-             "i2cWorker": {"option": "Monitoring", "pauseTime": 100},
-             "virtualChannels": [{"virtualChannel": 0, "name": "Front", "debayer": "RAW_RGGB_to_RGB", "frameAnalysisWorker": {}}]},
-        ],
-    }, cam
+    bitdir = os.path.realpath(f"{BENCH}/fpga_bitfile")
+    assert cam["fpgaBitFile"] == f"{bitdir}/FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx", cam["fpgaBitFile"]
+    assert cam["deviceMode"] == "4in/4out" and cam["deviceResource"] == "PXI1Slot2" and cam["fpgaDefaults"]["Frames_on_DMA_Buffer"] == 20
+    ch = cam["channelConfiguration"][0]
+    assert ch["streamingMode"] == "Continuous" and ch["i2cCommands"].endswith("/configurations/i2c_configuration/front_init.txt")
+    assert ch["i2cWorker"]["i2cWorkerMode"] == "Monitoring & Checking" and ch["i2cWorker"]["pauseTime"] == 250
+    vc = ch["vcConfiguration"][0]
+    assert vc["virtualChannel"] == "VC0" and vc["cameraDebayer"] == "YUV422_YUYV_to_RGB" and vc["frameAnalysisWorker"] == ["Frame Verification"]
+    pt = t["testModes"][1]["cameraModels"][0]
+    assert pt["channelInfo"] == [{"inputChannel": "SI0", "outputChannel": "SO0", "name": "CH0_In"}], pt["channelInfo"]
+    assert pt["channelConfiguration"][0]["cybersecurity"] == {"enable": True, "lvClass": "X3F(OVT)"}
+
+    # the user's validator accepts the file
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run([sys.executable, os.path.join(here, "../tools/validate_tester_configuration.py"), saved,
+                        "--schema", os.path.join(here, "../tools/tester_configuration.schema.json")], capture_output=True, text=True)
+    print(r.stdout.strip().splitlines()[-1])
+    assert r.returncode == 0, r.stdout + r.stderr
 
     # Open › Tester lists the tester folder
     file_menu(page, "Open", "Tester…")

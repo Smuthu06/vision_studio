@@ -45,8 +45,10 @@ Tester configurations
   tester_dir (default ../../configurations/tester_configuration).
   The Bit File dropdown lists *.lvbitx in bitfile_dir (../../fpga_bitfile)
   and Datalogger Configuration lists *.json in datalogger_dir
-  (../../datalogger_configuration). FPGA devices and FPGA board defaults are
-  lists in File > Settings.
+  (../../datalogger_configuration). Device modes, FPGA board defaults and
+  debayer configurations are lists in File > Settings.
+  Tester files are written in the CTP format (cameraTester root of
+  tester_configuration.schema.json) and checked against that schema.
   Right-click a camera model to add channels (each comes with an I2C worker)
   and a channel to add virtual channels (each with a frame analysis worker).
   I2C Initialisation File lists *.txt in i2c_dir

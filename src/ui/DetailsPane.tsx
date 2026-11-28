@@ -1,7 +1,7 @@
 /** Right-hand Details pane: full documentation of the selected node and each of its inputs. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  columnDoc, constraintRows, containsList, fieldDoc, jsonPathOf, NODE_DOCS, resolveTable, tableDoc, type InputDoc,
+  columnDoc, constraintRows, containsList, fieldDoc, fieldJsonKey, jsonPathOf, NODE_DOCS, resolveTable, tableDoc, type InputDoc,
 } from "../core/docs";
 import { DEFS, EMBEDDED_INFO_TABLE, EMBEDDED_LINE_TABLE, nodeLabel, optionRecord, type CNode, type IconName, type Issue, type TreeIndex } from "../core/model";
 import { displayValue, getPath, isRequired, RANK, type FieldSpec, type Json, type Severity, type TableSpec } from "../core/schema";
@@ -228,7 +228,7 @@ function EntryDetail({ node, idx, entry, issues, current, compact, tablePath }: 
   const base = jsonPathOf(node, idx);
   const generic = table === EMBEDDED_INFO_TABLE ? "frameOutput[i].embeddedLine[j].info"
     : table === EMBEDDED_LINE_TABLE ? "frameOutput[i].embeddedLine" : table?.key;
-  const jsonKey = table ? `${base}.${tablePath ?? generic}[n].${spec.key}` : `${base}.${spec.key}`;
+  const jsonKey = table ? `${base}.${tablePath ?? generic}[n].${spec.key}` : `${base}.${fieldJsonKey(node, spec.key, idx)}`;
   return (
     <div className="entry-detail">
       {!compact && <h3>{spec.label}{isRequired(spec) && spec.kind !== "bool" && <span className="req">*</span>}</h3>}

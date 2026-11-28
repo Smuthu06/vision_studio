@@ -28,7 +28,13 @@ export const FEATURE_EMC = "EMCfeature";
 /** Tester channels: deserializer inputs SI0–SI7 and serializer outputs SO0–SO7. */
 export const TESTER_CHANNELS = [...Array.from({ length: 8 }, (_, i) => `SI${i}`), ...Array.from({ length: 8 }, (_, i) => `SO${i}`)] as const;
 /** I2C worker of a tester channel. */
-export const I2C_WORKER_OPTIONS = ["Monitoring", "Monitoring and Checking"] as const;
+export const I2C_WORKER_OPTIONS = ["Monitoring", "Monitoring & Checking"] as const;
+/** CTP tester schema value lists (tester_configuration.schema.json). */
+export const POC_MODES = ["Internal", "Auxiliary", "None"] as const;
+export const STREAMING_MODES = ["Single", "Continuous"] as const;
+export const SO_CSI_LANES = ["2 Lane", "4 Lane"] as const;
+export const SI_CHANNELS = TESTER_CHANNELS.filter((c) => c.startsWith("SI"));
+export const SO_CHANNELS = TESTER_CHANNELS.filter((c) => c.startsWith("SO"));
 export const FEATURES = [FEATURE_DATALOGGER, FEATURE_FAULTINJECTION, FEATURE_EMC] as const;
 export const PACKET_FORMATS = ["raw8", "raw10", "raw12", "raw14", "raw16"] as const;
 export const HW_KEY_CAPTURE = "CaptureMode";
@@ -86,7 +92,7 @@ export type CatalogSource =
   | "features" | "imagers" | "serializers" | "manufacturers" | "models" | "hwSerializers" | "hwDeserializers"
   | "imageFormats" | "dataTypes"
   // tester configuration – lists in ui_config.json
-  | "fpgaDevices" | "boardDefaults" | "debayerConfigs"
+  | "deviceModes" | "boardDefaults" | "debayerConfigs"
   // tester configuration – from the selected project JSON and the bench folders
   | "projectFiles" | "projectModes" | "projectCameras" | "projectManufacturers" | "projectDeviceModels"
   | "projectVcs" | "bitfiles" | "dataloggers" | "i2cFiles";
@@ -113,6 +119,8 @@ export interface FieldSpec {
   optionLabels?: Record<string, string>; // display text per option value (filled by resolveSpec)
   requiresFeature?: string;  // editable (and validated) only when a project mode enables this feature
   showIf?: string;           // shown (and validated) only when the (referenced) project enables this feature
+  showInMode?: string;       // tester: shown (and validated) only below a tester mode of this name (e.g. PassthroughMode)
+  group?: string;            // editor: shown in a separate card with this title
 }
 
 export interface TableSpec {

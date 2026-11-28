@@ -23,6 +23,7 @@ import { SettingsWindow } from "./ui/Settings";
 import { OpenDialog } from "./ui/OpenDialog";
 import { PickProjectDialog } from "./ui/PickProjectDialog";
 import { configFileName } from "./core/filename";
+import { exportNodeJson } from "./core/ctpTester";
 
 /** Without a backend (plain browser) the built-in sample stands in for the project folder. */
 const SAMPLE_NAME = configFileName(documentFromJson(sample).root);
@@ -252,7 +253,7 @@ function Studio() {
 
   useEffect(() => { // autosave a recovery draft (never blocks the UI)
     if (!state.dirty) return;
-    const t = setTimeout(() => storage.set(DRAFT_KEY, JSON.stringify({ time: Date.now(), fileName: state.fileName, json: documentToJson(state.doc) })), 600);
+    const t = setTimeout(() => storage.set(DRAFT_KEY, JSON.stringify({ time: Date.now(), fileName: state.fileName, json: documentToJson(state.doc, catalogRef.current) })), 600);
     return () => clearTimeout(t);
   }, [state.doc, state.dirty, state.fileName]);
 
@@ -480,7 +481,7 @@ function Studio() {
     // The name always comes from the configuration: <project|tester>_v<version>.json in its folder.
     const docK = docKind(st.doc.root);
     const name = configFileName(st.doc.root);
-    const text = documentToText(st.doc);
+    const text = documentToText(st.doc, catalogRef.current);
     try {
       const folder = await refreshFolder(docK);
       if (!folder || !folder.canSave) {
@@ -506,7 +507,7 @@ function Studio() {
       }
       // Re-saving the file that is open replaces it; any other file of that name needs a yes.
       const own = isProjectHandle(st.fileHandle) && (st.fileHandle.kind ?? "project") === docK && st.fileHandle.project.toLowerCase() === name.toLowerCase();
-      const who = docK === "tester" ? st.doc.root.params.testerName : st.doc.root.params.project;
+      const who = docK === "tester" ? st.doc.root.params.applicationName : st.doc.root.params.project;
       const askReplace = async () => (await confirm({ title: `Replace ${name}?`, confirmLabel: "Replace", danger: true,
           message: <>A configuration for {KIND_LABEL[docK]} <b>{String(who || "Untitled")}</b> version <b>{String(st.doc.root.params.version || "–")}</b> is already saved in <code>{folder.dir}</code>. Replace it with this one? To keep both, change the {KIND_LABEL[docK]} version first.</> })) === "confirm";
       const exists = folder.files.some((f) => f.name.toLowerCase() === name.toLowerCase());
@@ -690,8 +691,9 @@ function Studio() {
       </div>
 
       <BottomPanel tab={bottomTab} setTab={setBottomTab} height={bottomH} setHeight={setBottomH} issues={issues} idx={idx}
-        onIssue={gotoIssue} previewNode={selected} wholeDoc={() => documentToText(state.doc)}
-        docJson={(n) => JSON.stringify(n === root ? documentToJson(state.doc) : nodeToJson(n), null, 2)} quiet={!revealAll} />
+        onIssue={gotoIssue} previewNode={selected} wholeDoc={() => documentToText(state.doc, catalog)}
+        docJson={(n) => JSON.stringify(n === root ? documentToJson(state.doc, catalog)
+          : kind === "tester" ? exportNodeJson(root, n, catalog) : nodeToJson(n), null, 2)} quiet={!revealAll} />
 
       <footer className="statusbar">
         <span className="status-item"><Icon name={isDesktop ? "desktop" : "globe"} size={13} />{platformName}</span>

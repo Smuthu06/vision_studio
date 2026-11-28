@@ -7,7 +7,7 @@ import {
 import { delPath, isEmpty, isRequired, kindOf, RANK, setPath, SERIAL_CHANNEL_MAX, type FieldSpec, type Json, type TableSpec } from "../core/schema";
 import type { Recipe } from "../state/store";
 import { cascadeHardware, cascadeTesterCamera, resolveSpec, type Catalog } from "../core/catalog";
-import { featureEnabled, findChild, optionRecord } from "../core/model";
+import { bitFileDeviceMode, featureEnabled, fieldsInMode, findChild, optionRecord } from "../core/model";
 import { FEATURE_EMC } from "../core/schema";
 
 /** Table spec with its catalog-backed columns turned into dropdowns. */
@@ -69,12 +69,19 @@ export function Editor(props: EditorProps) {
       if ((node.type === "hwCapture" || node.type === "hwPassthrough") && (spec.key === "manufacture" || spec.key === "model"))
         cascadeHardware(params, props.catalog);
       // tester camera: another project camera model / manufacturer narrows the device lists
-      if (node.type === "testerCamera" && (spec.key === "cameraModel" || spec.key === "deviceManufacturer"))
+      if (node.type === "testerCamera" && (spec.key === "cameraModel" || spec.key === "manufacturer"))
         cascadeTesterCamera(params, props.catalog, idx.ancestor(node, "testerMode")?.params.mode);
+      // a bit file is built for one IO density: FPGA_8IN_… → 8in, FPGA_4IN4OUT_… → 4in/4out
+      if (node.type === "testerCamera" && spec.key === "fpgaBitFile") {
+        const dm = bitFileDeviceMode(String(params.fpgaBitFile ?? ""));
+        if (dm) params.deviceMode = dm;
+      }
     }, `${node.id}:${spec.key}`);
   const rec = optionRecord(node, idx);
   const on = (feature: string) => featureEnabled(idx, feature, props.catalog);
-  const plainFields = (def.fields ?? []).filter((f) => !f.requiresFeature && (!f.showIf || on(f.showIf)));
+  const visible = fieldsInMode(def.fields ?? [], node, idx).filter((f) => !f.requiresFeature && (!f.showIf || on(f.showIf)));
+  const plainFields = visible.filter((f) => !f.group);
+  const groups = [...new Set(visible.filter((f) => f.group).map((f) => f.group!))];
 
   const custom = SECTION_REGISTRY[node.type];
   const opts = childOptions(node, idx, props.catalog);
@@ -108,6 +115,13 @@ export function Editor(props: EditorProps) {
               params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
+        {groups.map((g) => (
+          <section className="card" key={g}>
+            <h3 className="card-title">{g}</h3>
+            <FieldForm nodeId={node.id} fields={visible.filter((f) => f.group === g).map((f) => resolveSpec(f, props.catalog, rec))}
+              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
+          </section>
+        ))}
         {[...new Set((def.fields ?? []).map((f) => f.requiresFeature).filter((f): f is string => !!f))].map((feature) => (
           <FeatureSection key={feature} feature={feature} on={on(feature)} idx={idx} onSelect={onSelect}>
             <FieldForm nodeId={node.id} fields={def.fields!.filter((f) => f.requiresFeature === feature).map((f) => resolveSpec(f, props.catalog, rec))}
