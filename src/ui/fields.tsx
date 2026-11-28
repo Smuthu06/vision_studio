@@ -6,6 +6,7 @@ import {
   type FieldSpec, type Json, type Severity, type TableSpec,
 } from "../core/schema";
 import { Icon, NodeIcon } from "./icons";
+import { SOURCE_INFO } from "../core/catalog";
 import type { IconName } from "../core/model";
 
 export interface CellIssue { severity: Severity; messages: string[] }
@@ -38,15 +39,26 @@ export function FieldInput({ spec, value, onChange, issue, id, cell, disabled }:
 
   if (k === "enum" || k === "intenum") {
     const opts: Array<[Json, string]> = k === "enum"
-      ? (spec.options ?? []).map((o) => [o, o])
+      ? (spec.options ?? []).map((o) => [o, spec.optionLabels?.[o] ?? o])
       : (spec.intOptions ?? []).map(([v, l]) => [v, `${v} – ${l}`]);
-    const known = opts.some(([v]) => v === value);
-    const idx = opts.findIndex(([v]) => v === value);
+    // hex data types: "0x2a" in a file matches the listed "0x2A"
+    const same = (a: Json, b: Json) => a === b || (spec.source === "dataTypes" && typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase());
+    const idx = opts.findIndex(([v]) => same(v, value));
+    const known = idx >= 0;
+    const empty = value === undefined || value === null || value === "";
     return (
       <select id={id} className={`${cls} sel`} title={title} disabled={disabled} value={known ? String(idx) : "__invalid"}
-        onChange={(e) => e.target.value !== "__invalid" && onChange(opts[+e.target.value][0])}>
-        {!known && <option value="__invalid">{value === undefined || value === null || value === "" ? "— select —" : `${value} (invalid)`}</option>}
+        onChange={(e) => {
+          if (e.target.value === "__settings") {
+            window.dispatchEvent(new CustomEvent("cce:open-settings", { detail: { section: spec.source ? SOURCE_INFO[spec.source].section : undefined } }));
+            return;
+          }
+          if (e.target.value !== "__invalid") onChange(opts[+e.target.value][0]);
+        }}>
+        {!known && <option value="__invalid">{empty ? "— select —" : `${value} (${spec.source ? "not in Settings" : "invalid"})`}</option>}
         {opts.map(([, l], i) => <option key={i} value={String(i)}>{l}</option>)}
+        {spec.source && !opts.length && <option value="__invalid" disabled>(list is empty)</option>}
+        {spec.source && <option value="__settings">⚙ Edit list in Settings…</option>}
       </select>
     );
   }
@@ -73,6 +85,12 @@ export function FieldInput({ spec, value, onChange, issue, id, cell, disabled }:
             </button>
           );
         })}
+        {spec.source && (
+          <button type="button" className="chip chip-edit" title="Edit this list in Settings"
+            onClick={() => window.dispatchEvent(new CustomEvent("cce:open-settings", { detail: { section: SOURCE_INFO[spec.source!].section } }))}>
+            <Icon name="gear" size={13} />Edit list…
+          </button>
+        )}
       </div>
     );
   }

@@ -25,6 +25,7 @@ export type Recipe = (params: Json, node: CNode) => void;
 export type Action =
   | { type: "load"; doc: ConfigDocument; fileName: string | null; handle: unknown; dirty?: boolean }
   | { type: "mutate"; id: string; recipe: Recipe; key?: string }
+  | { type: "mutateDoc"; recipe: (root: CNode) => void }
   | { type: "add"; parentId: string; node: CNode }
   | { type: "delete"; id: string }
   | { type: "duplicate"; id: string }
@@ -78,6 +79,10 @@ export function reducer(state: AppState, a: Action): AppState {
         if (n) a.recipe(n.params, n);
       });
       return commit(state, doc, {}, a.key ?? null);
+    }
+    case "mutateDoc": {
+      const doc = produce(state.doc, (d) => { a.recipe(d.root); });
+      return commit(state, doc);
     }
     case "add": {
       const doc = produce(state.doc, (d) => {

@@ -6,6 +6,11 @@ import {
 } from "../core/model";
 import { delPath, isEmpty, isRequired, kindOf, RANK, setPath, SERIAL_CHANNEL_MAX, type FieldSpec, type Json, type TableSpec } from "../core/schema";
 import type { Recipe } from "../state/store";
+import { cascadeHardware, resolveSpec, type Catalog } from "../core/catalog";
+
+/** Table spec with its catalog-backed columns turned into dropdowns. */
+const resolvedTable = (t: TableSpec, c: Catalog): TableSpec =>
+  t.columns.some((x) => x.source) ? { ...t, columns: t.columns.map((x) => resolveSpec(x, c, {})) } : t;
 import { DataTable, FieldForm, rowsRecipe } from "./fields";
 import { Icon, NodeIcon } from "./icons";
 
@@ -21,6 +26,7 @@ export interface EditorProps {
   focus: FocusRequest | null;
   toast: (t: string, k?: "info" | "success" | "error") => void;
   detailsOpen: boolean;            // the Details pane documents inputs → keep the form free of helper text
+  catalog: Catalog;                // Settings lists behind the dropdowns
 }
 
 /** Registry: node type → custom section renderer (falls back to the generic tables). */
@@ -57,10 +63,13 @@ export function Editor(props: EditorProps) {
     mutate(node.id, (params) => {
       if (!isRequired(spec) && kindOf(spec) === "str" && isEmpty(value)) delPath(params, spec.key);
       else setPath(params, spec.key, value);
+      // hardware: a new manufacturer / model narrows the model and IC lists
+      if ((node.type === "hwCapture" || node.type === "hwPassthrough") && (spec.key === "manufacture" || spec.key === "model"))
+        cascadeHardware(params, props.catalog);
     }, `${node.id}:${spec.key}`);
 
   const custom = SECTION_REGISTRY[node.type];
-  const opts = childOptions(node, idx);
+  const opts = childOptions(node, idx, props.catalog);
 
   return (
     <div className="editor">
@@ -87,16 +96,16 @@ export function Editor(props: EditorProps) {
         {def.fields && (
           <section className="card">
             <h3 className="card-title">Parameters</h3>
-            <FieldForm nodeId={node.id} fields={def.fields} params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
+            <FieldForm nodeId={node.id} fields={def.fields.map((f) => resolveSpec(f, props.catalog, node.params))} params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
 
         {custom ? custom({ ...props, rowsFor }) : def.tables && (
           def.tableLayout === "tabs"
-            ? <TabbedTables node={node} tables={def.tables} issues={issues} rowsFor={rowsFor} focus={focus} />
+            ? <TabbedTables node={node} tables={def.tables.map((t) => resolvedTable(t, props.catalog))} issues={issues} rowsFor={rowsFor} focus={focus} />
             : def.tables.map((t) => (
               <section key={t.key} className="card card-flush">
-                <DataTable spec={t} rows={node.params[t.key]} tableId={t.key} issues={issues} onRows={rowsFor([t.key])} />
+                <DataTable spec={resolvedTable(t, props.catalog)} rows={node.params[t.key]} tableId={t.key} issues={issues} onRows={rowsFor([t.key])} />
               </section>
             ))
         )}
@@ -224,7 +233,7 @@ function PassthroughSection({ node, issues, rowsFor, mutate, toast }: EditorProp
   );
 }
 
-function VirtualChannelSection({ node, issues, rowsFor, focus }: EditorProps & { rowsFor: RowsFor }) {
+function VirtualChannelSection({ node, issues, rowsFor, focus, catalog }: EditorProps & { rowsFor: RowsFor }) {
   const outputs: Json[] = Array.isArray(node.params.frameOutput) ? node.params.frameOutput : [];
   const initial = useMemo(() => Math.max(0, outputs.findIndex((o) => Array.isArray(o?.embeddedLine) && o.embeddedLine.length)), [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [outSel, setOutSel] = useState(outputs.length ? initial : -1);
@@ -245,7 +254,7 @@ function VirtualChannelSection({ node, issues, rowsFor, focus }: EditorProps & {
   return (
     <>
       <section className="card card-flush">
-        <DataTable spec={FRAME_OUTPUT_TABLE} rows={outputs} tableId="frameOutput" issues={issues} onRows={rowsFor(["frameOutput"])}
+        <DataTable spec={resolvedTable(FRAME_OUTPUT_TABLE, catalog)} rows={outputs} tableId="frameOutput" issues={issues} onRows={rowsFor(["frameOutput"])}
           selected={outSel} onSelect={(r) => { setOutSel(r); setLineSel(0); }} />
       </section>
       <section className="card">

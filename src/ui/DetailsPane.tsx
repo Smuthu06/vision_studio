@@ -6,6 +6,7 @@ import {
 import { DEFS, EMBEDDED_INFO_TABLE, EMBEDDED_LINE_TABLE, nodeLabel, type CNode, type IconName, type Issue, type TreeIndex } from "../core/model";
 import { displayValue, getPath, isRequired, RANK, type FieldSpec, type Json, type Severity, type TableSpec } from "../core/schema";
 import { Icon, NodeIcon } from "./icons";
+import { resolveSpec, type Catalog } from "../core/catalog";
 
 export type ActiveInput =
   | { kind: "field"; key: string }
@@ -47,6 +48,7 @@ function fmtJson(v: Json): string {
 }
 
 export interface DetailsPaneProps {
+  catalog: Catalog;
   node: CNode;
   idx: TreeIndex;
   issues: Issue[];
@@ -56,7 +58,7 @@ export interface DetailsPaneProps {
   onClose: () => void;
 }
 
-export function DetailsPane({ node, idx, issues, active, width, onResize, onClose }: DetailsPaneProps) {
+export function DetailsPane({ node, idx, issues, active, width, onResize, onClose, catalog }: DetailsPaneProps) {
   const def = DEFS[node.type];
   const [query, setQuery] = useState("");
   const [listOpen, setListOpen] = useState(false);   // full input list is on demand
@@ -68,10 +70,10 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
     () => [...(def.tables ?? []), ...(node.type === "vc" ? [EMBEDDED_LINE_TABLE, EMBEDDED_INFO_TABLE] : [])],
     [def, node.type]);
 
-  const fieldEntries: Entry[] = (def.fields ?? []).map((s) => ({ id: `f:${s.key}`, spec: s, doc: fieldDoc(node.type, s.key) }));
+  const fieldEntries: Entry[] = (def.fields ?? []).map((s) => ({ id: `f:${s.key}`, spec: resolveSpec(s, catalog, node.params), doc: fieldDoc(node.type, s.key) }));
   const tableEntries = tables.map((t) => ({
     table: t,
-    entries: t.columns.map((c) => ({ id: `t:${t.docId}:${c.key}`, spec: c, doc: columnDoc(t, c.key), table: t } as Entry)),
+    entries: t.columns.map((c) => ({ id: `t:${t.docId}:${c.key}`, spec: resolveSpec(c, catalog, {}), doc: columnDoc(t, c.key), table: t } as Entry)),
   }));
 
   // which entry corresponds to the focused input?

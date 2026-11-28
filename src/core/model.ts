@@ -10,10 +10,13 @@ import {
   EL_OPERATIONS, ERROR, FEATURES, FEATURE_DATALOGGER, FEATURE_FAULTINJECTION, FRAME_OUTPUT_NAMES,
   GPIO_DIRECTIONS, GPIO_PINS, HW_KEY_CAPTURE, HW_KEY_PASSTHROUGH, I2C_ACK_NACK, I2C_COMMAND_TYPES,
   I2C_REG_MODES, LINK_OPTIONS, MODE_CAPTURE, MODE_PASSTHROUGH, MONITOR_MODES, PACKET_FORMATS, PROJECT_MODES,
-  RE_AUTHOR, RE_DATE, RE_EMAIL, RE_IDENT, RE_PROJECT_NAME, RE_SEMVER, RE_VERSION, SERIAL_CHANNEL_MAX, VC_MAX,
+  RE_AUTHOR, RE_DATE, RE_EMAIL, RE_PROJECT_NAME, RE_SEMVER, RE_VERSION, SERIAL_CHANNEL_MAX, VC_MAX,
   VC_NAME_SUGGESTIONS, WARNING, checkRecord, getPath, isInt, isNum, isRealDate, ordered, todayDDMMYYYY,
-  type FieldSpec, type Json, type Severity, type TableSpec,
+  checkValue, isEmpty, type FieldSpec, type Json, type Severity, type TableSpec,
 } from "./schema";
+import {
+  cascadeHardware, defaultCatalog, defaultHardware, inCatalog, resolveSpec, SOURCE_INFO, type Catalog,
+} from "./catalog";
 
 export type NodeType =
   | "project" | "modes" | "mode" | "cameras" | "camera" | "hardware" | "hwCapture" | "hwPassthrough"
@@ -146,8 +149,8 @@ export const FRAME_OUTPUT_TABLE: TableSpec = {
   help: "Stream layouts transmitted over this virtual channel.",
   columns: [
     { key: "name", label: "Name", suggestions: FRAME_OUTPUT_NAMES, default: "Image", help: "Stream name: Image, Header, Metadata", width: 130 },
-    { key: "dataIdentifier", label: "Data ID", kind: "hexstr", min: 0, max: 0x3f, hex: true, default: "0x2A", help: "MIPI CSI-2 data type identifier (0x00–0x3F)", width: 90 },
-    { key: "dataFormat", label: "Format", kind: "enum", options: PACKET_FORMATS, default: "raw16", width: 100 },
+    { key: "dataIdentifier", label: "Data ID", kind: "hexstr", min: 0, max: 0x3f, hex: true, default: "0x2A", help: "MIPI CSI-2 data type identifier (0x00–0x3F)", width: 150, source: "dataTypes" },
+    { key: "dataFormat", label: "Format", kind: "enum", options: PACKET_FORMATS, default: "raw16", width: 100, source: "imageFormats", strict: true },
     { key: "xSize", label: "Width", kind: "int", min: 1, max: 16384, default: 1920, help: "Horizontal resolution (pixels)", width: 90 },
     { key: "ySize", label: "Height", kind: "int", min: 1, max: 16384, default: 1080, help: "Vertical resolution (lines)", width: 90 },
   ],
@@ -292,23 +295,23 @@ export interface NodeDef {
   defaultParams: () => Json;
   label?: (n: CNode) => string;
   summary?: (n: CNode) => string;
-  create?: (parent: CNode, idx: TreeIndex) => CNode;
+  create?: (parent: CNode, idx: TreeIndex, catalog: Catalog) => CNode;
   childOptions?: (n: CNode, idx: TreeIndex) => ChildOption[];
   checks?: (n: CNode, idx: TreeIndex) => Issue[];
 }
 
 const hwFields = (serializerRequired: boolean): FieldSpec[] => [
-  { key: "manufacture", label: "Manufacturer", help: "Hardware vendor, e.g. NationalInstruments", suggestions: ["NationalInstruments"] },
-  { key: "model", label: "Board Model", help: "PXIe FPGA frame grabber / SerDes interface board, e.g. NI1487" },
-  { key: "deserializer", label: "Deserializer IC", help: "Receiver deserializer chip on the interface board", placeholder: "e.g. DES_IC_PART_B" },
-  { key: "serializer", label: "Serializer IC", required: serializerRequired, placeholder: "e.g. SER_IC_PART_A",
+  { key: "manufacture", label: "Manufacturer", help: "Hardware vendor, e.g. NationalInstruments", source: "manufacturers" },
+  { key: "model", label: "Board Model", help: "PXIe FPGA frame grabber / SerDes interface board, e.g. NI1487", source: "models" },
+  { key: "deserializer", label: "Deserializer IC", help: "Receiver deserializer chip on the interface board", placeholder: "e.g. DES_IC_PART_B", source: "hwDeserializers" },
+  { key: "serializer", label: "Serializer IC", required: serializerRequired, placeholder: "e.g. SER_IC_PART_A", source: "hwSerializers",
     help: serializerRequired ? "Transmitter serializer – mandatory for passthroughMode" : "Optional in CaptureMode" },
 ];
 
 const VC_DEFAULT_NAMES: Record<number, string> = { 0: "Front", 1: "Rear", 2: "Left", 3: "Right" };
 export function makeVc(number: number, packetFormat = "raw16"): CNode {
   const out = FRAME_OUTPUT_TABLE.factory!([]);
-  out.dataFormat = (PACKET_FORMATS as readonly string[]).includes(packetFormat) ? packetFormat : "raw16";
+  out.dataFormat = typeof packetFormat === "string" && packetFormat ? packetFormat : "raw16";
   return mk("vc", { virtualChannelNumber: number, virtualChannelName: VC_DEFAULT_NAMES[number] ?? "VC", fps: { max: 30.1, min: 29.9 }, frameOutput: [out] });
 }
 const nextVcNumber = (frames: CNode): number | null => {
@@ -377,7 +380,7 @@ export const DEFS: Record<NodeType, NodeDef> = {
     description: "Operational hardware routing mode. DataLogger logs frame data to disk; FaultInjection enables controlled error injection.",
     fields: [
       { key: "mode", label: "Mode", kind: "enum", options: PROJECT_MODES, help: "CaptureMode: DUT → frame grabber. PassthroughMode: camera ↔ ECU routed through the bench." },
-      { key: "features", label: "Features", kind: "multi", options: FEATURES, required: false, help: "Bench features enabled in this mode" },
+      { key: "features", label: "Features", kind: "multi", options: FEATURES, required: false, help: "Bench features enabled in this mode", source: "features", strict: true },
     ],
     jsonOrder: ["mode", "features"],
     defaultParams: () => ({ mode: MODE_CAPTURE, features: [FEATURE_DATALOGGER] }),
@@ -406,10 +409,10 @@ export const DEFS: Record<NodeType, NodeDef> = {
     childTypes: ["hardware", "frames", "fault", "monitoring"],
     fields: [
       { key: "model", label: "Model", help: "Camera model identifier, e.g. ADAS_Camera_Model_A" },
-      { key: "packetFormat", label: "Packet Format", kind: "enum", options: PACKET_FORMATS, help: "MIPI CSI-2 raw packet encoding" },
-      { key: "imager", label: "Imager", pattern: RE_IDENT, hint: "must be an identifier (letters, digits, _ . -)", help: "Sensor IC model, e.g. SENSOR_MODEL_X", placeholder: "e.g. SENSOR_MODEL_X" },
+      { key: "packetFormat", label: "Packet Format", kind: "enum", options: PACKET_FORMATS, help: "MIPI CSI-2 raw packet encoding", source: "imageFormats", strict: true },
+      { key: "imager", label: "Imager", help: "Sensor IC model, e.g. SENSOR_MODEL_X", placeholder: "e.g. SENSOR_MODEL_X", source: "imagers" },
       { key: "operatingVoltage", label: "Operating Voltage (V)", kind: "float", min: 1, max: 48, help: "Nominal supply voltage, 1.0–48.0 V" },
-      { key: "serializer", label: "Serializer IC", help: "Camera serializer IC part number", placeholder: "e.g. SER_IC_PART_A" },
+      { key: "serializer", label: "Serializer IC", help: "Camera serializer IC part number", placeholder: "e.g. SER_IC_PART_A", source: "serializers" },
       { key: "imagerAddress", label: "Imager I2C Address", kind: "int", min: 0, max: 255, hex: true, help: "Sensor I2C slave address (0–255), decimal or 0x-hex" },
       { key: "eeprom.Lenght", label: "EEPROM Length", kind: "int", min: 0, help: "Calibration EEPROM length (schema key 'Lenght')" },
       { key: "eeprom.Address", label: "EEPROM Address(es)", kind: "intlist", min: 0, hex: true, help: "Comma separated list, e.g. 0x50, 0x51", placeholder: "e.g. 0x50, 0x51" },
@@ -458,10 +461,10 @@ export const DEFS: Record<NodeType, NodeDef> = {
     description: "FPGA frame grabber used in CaptureMode.",
     fields: hwFields(false),
     jsonOrder: ["manufacture", "model", "serializer", "deserializer", "gpioRouting"],
-    defaultParams: () => ({ manufacture: "NationalInstruments", model: "NI1487", deserializer: "" }),
+    defaultParams: () => defaultHardware(defaultCatalog(), false),
     label: (n) => (n.params.model ? `Capture Hardware (${n.params.model})` : "Capture Hardware"),
     summary: (n) => [n.params.manufacture, n.params.model, n.params.deserializer].filter(Boolean).join(" · "),
-    create: () => mk("hwCapture", undefined, [], { jsonKey: HW_KEY_CAPTURE }),
+    create: (_parent, _idx, catalog) => mk("hwCapture", defaultHardware(catalog, false), [], { jsonKey: HW_KEY_CAPTURE }),
     checks: (n, idx) => serializerCheck(n, idx),
   },
 
@@ -471,16 +474,16 @@ export const DEFS: Record<NodeType, NodeDef> = {
     fields: hwFields(true),
     tables: [GPIO_TABLE],
     jsonOrder: ["manufacture", "model", "serializer", "deserializer", "gpioRouting"],
-    defaultParams: () => ({ manufacture: "NationalInstruments", model: "NI1487", serializer: "", deserializer: "", gpioRouting: [] }),
+    defaultParams: () => ({ ...defaultHardware(defaultCatalog(), true), gpioRouting: [] }),
     label: (n) => (n.params.model ? `Passthrough Hardware (${n.params.model})` : "Passthrough Hardware"),
     summary: (n) => [n.params.manufacture, n.params.model, `${(n.params.gpioRouting ?? []).length} GPIO routes`].filter(Boolean).join(" · "),
-    create: (parent, idx) => {
-      const node = mk("hwPassthrough", undefined, [], { jsonKey: HW_KEY_PASSTHROUGH });
+    create: (parent, idx, catalog) => {
       const cam = idx.get(parent.id) ? idx.ancestor(parent, "camera") : null;
-      if (cam) node.params.serializer = cam.params.serializer || "";
+      const params = { ...defaultHardware(catalog, true, cam?.params.serializer), gpioRouting: [] };
       const cap = findChild(parent, "hwCapture");
-      if (cap) node.params.deserializer = cap.params.deserializer || "";
-      return node;
+      if (cap && cap.params.manufacture === params.manufacture && cap.params.model === params.model && cap.params.deserializer)
+        params.deserializer = cap.params.deserializer;
+      return mk("hwPassthrough", params, [], { jsonKey: HW_KEY_PASSTHROUGH });
     },
     checks: (n, idx) => {
       const out = serializerCheck(n, idx);
@@ -598,7 +601,7 @@ function vcChecks(n: CNode, idx: TreeIndex): Issue[] {
     const key = /^(0[xX])?[0-9A-Fa-f]+$/.test(raw) ? String(parseInt(raw.replace(/^0[xX]/, ""), 16)) : raw.toLowerCase();
     if (raw && seen.has(key)) out.push(issue(WARNING, `Output ${r + 1}: data identifier ${row.dataIdentifier} is also used by output ${seen.get(key)! + 1}`, n, { table: "frameOutput", row: r, column: "dataIdentifier" }));
     else seen.set(key, r);
-    if (row.name === "Image" && pf && (PACKET_FORMATS as readonly string[]).includes(row.dataFormat) && row.dataFormat !== pf)
+    if (row.name === "Image" && typeof pf === "string" && pf && typeof row.dataFormat === "string" && row.dataFormat && row.dataFormat !== pf)
       out.push(issue(WARNING, `Output ${r + 1}: Image format ${row.dataFormat} differs from the camera packet format ${pf}`, n, { table: "frameOutput", row: r, column: "dataFormat" }));
     const lines = row.embeddedLine;
     if (lines === undefined) return;
@@ -666,12 +669,37 @@ function monitoringChecks(n: CNode): Issue[] {
   return out;
 }
 
-export function checkTable(n: CNode, spec: TableSpec, rows: Json, tableId: string): Issue[] {
+/**
+ * Check a record against specs. Catalog-backed specs: strict ones must use a listed
+ * value (error); the others are checked for format and get a warning when unlisted.
+ */
+export function checkFields(specs: readonly FieldSpec[], record: Json, catalog: Catalog): Array<[Severity, string, string]> {
+  if (!specs.some((s) => s.source)) return checkRecord(specs, record);
+  if (record === null || typeof record !== "object" || Array.isArray(record)) return [[ERROR, "", "Entry must be a JSON object"]];
+  const out: Array<[Severity, string, string]> = [];
+  for (const spec of specs) {
+    const value = getPath(record, spec.key);
+    if (!spec.source) { for (const [sev, msg] of checkValue(spec, value)) out.push([sev, spec.key, msg]); continue; }
+    const where = `Settings › ${SOURCE_INFO[spec.source].label}`;
+    if (spec.strict) {
+      for (const [sev, msg] of checkValue(resolveSpec(spec, catalog, record), value))
+        out.push([sev, spec.key, sev === ERROR && !/ is required$/.test(msg) ? `${msg} (add it in ${where})` : msg]);
+      continue;
+    }
+    const base = checkValue(spec, value);
+    for (const [sev, msg] of base) out.push([sev, spec.key, msg]);
+    if (!base.length && !isEmpty(value) && !inCatalog(spec, catalog, record, value))
+      out.push([WARNING, spec.key, `${spec.label} '${value}' is not in the list in ${where}`]);
+  }
+  return out;
+}
+
+export function checkTable(n: CNode, spec: TableSpec, rows: Json, tableId: string, catalog: Catalog = defaultCatalog()): Issue[] {
   if (rows === undefined || rows === null) return [];
   if (!Array.isArray(rows)) return [issue(ERROR, `${spec.title} must be a list`, n, { table: tableId })];
   const out: Issue[] = [];
   rows.forEach((row, r) => {
-    for (const [sev, key, msg] of checkRecord(spec.columns, row))
+    for (const [sev, key, msg] of checkFields(spec.columns, row, catalog))
       out.push(issue(sev, `${spec.itemName} ${r + 1}: ${msg}`, n, { table: tableId, row: r, column: key || undefined }));
   });
   return out;
@@ -685,7 +713,7 @@ export const nodeLabel = (n: CNode) => defOf(n).label?.(n) ?? defOf(n).title;
 export const nodeSummary = (n: CNode) => defOf(n).summary?.(n) ?? "";
 export const canDelete = (n: CNode, idx: TreeIndex) => defOf(n).deletable !== false && idx.parentOf(n) !== null;
 
-export function childOptions(n: CNode, idx: TreeIndex): ChildOption[] {
+export function childOptions(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): ChildOption[] {
   const def = defOf(n);
   if (def.childOptions) return def.childOptions(n, idx);
   return (def.childTypes ?? []).map((t) => {
@@ -694,7 +722,7 @@ export function childOptions(n: CNode, idx: TreeIndex): ChildOption[] {
     return {
       label: `Add ${cd.addLabel ?? cd.title}`, type: t, icon: cd.icon, enabled: !exists,
       reason: exists ? "already present" : undefined, description: ADD_DESCRIPTIONS[t] ?? cd.description,
-      create: () => (cd.create ? cd.create(n, idx) : mk(t)),
+      create: () => (cd.create ? cd.create(n, idx, catalog) : mk(t)),
     };
   });
 }
@@ -836,17 +864,19 @@ export const documentToText = (doc: ConfigDocument) => JSON.stringify(documentTo
 // --------------------------------------------------------------------------
 // Validation
 // --------------------------------------------------------------------------
-export function validateNode(n: CNode, idx: TreeIndex): Issue[] {
+export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): Issue[] {
   const def = defOf(n);
   const out: Issue[] = [];
-  if (def.fields) for (const [sev, key, msg] of checkRecord(def.fields, n.params)) out.push(issue(sev, msg, n, { field: key || undefined }));
-  for (const t of def.tables ?? []) out.push(...checkTable(n, t, getPath(n.params, t.key), t.key));
+  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, n.params, catalog)) out.push(issue(sev, msg, n, { field: key || undefined }));
+  for (const t of def.tables ?? []) out.push(...checkTable(n, t, getPath(n.params, t.key), t.key, catalog));
   if (def.checks) out.push(...def.checks(n, idx));
   return out;
 }
 
-export function validateTree(root: CNode, idx = new TreeIndex(root)): Issue[] {
+export function validateTree(root: CNode, idx = new TreeIndex(root), catalog: Catalog = defaultCatalog()): Issue[] {
   const out: Issue[] = [];
-  for (const n of walk(root)) out.push(...validateNode(n, idx));
+  for (const n of walk(root)) out.push(...validateNode(n, idx, catalog));
   return out;
 }
+
+export { cascadeHardware };
