@@ -5,7 +5,10 @@ import {
   newDocument, nodeLabel, nodeToJson, TreeIndex, validateTree, walk, type ChildOption, type CNode, type Issue,
 } from "./core/model";
 import { RANK, type Severity } from "./core/schema";
-import { guardClose, isDesktop, openFile, platformName, saveFile, setWindowTitle, storage } from "./platform";
+import {
+  guardClose, isDesktop, loadUiConfig, openFile, platformName, saveFile, saveUiConfig, setWindowTitle, storage,
+  UiConfigConflict, type UiConfigState,
+} from "./platform";
 import { initialState, useAppStore } from "./state/store";
 import { Editor, type FocusRequest } from "./ui/Editor";
 import { AppLogo, Icon } from "./ui/icons";
@@ -42,6 +45,7 @@ function Studio() {
   const idx = useMemo(() => new TreeIndex(root), [root]);
   const [catalog, setCatalog] = useState<Catalog>(loadCatalog);
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
+  const [uiFile, setUiFile] = useState<UiConfigState | null>(null);   // where the lists live (ui_config.json)
   const issues = useMemo(() => validateTree(root, idx, catalog), [root, idx, catalog]);
   const steps = useMemo(() => computeSteps(root, issues, idx), [root, issues, idx]);
   const selected = idx.get(state.selectedId) ?? root;
@@ -138,11 +142,44 @@ function Studio() {
     return () => window.removeEventListener("cce:open-settings", on);
   }, []);
 
-  /** Apply edited settings; offer to carry renamed values over into the open configuration. */
+  const fileName = (f: UiConfigState | null) => (f?.path ? f.path.split(/[\\/]/).pop()! : "ui_config.json");
+
+  /** Use a loaded ui_config.json; returns false when it could not be used. */
+  const adoptUiFile = (f: UiConfigState, announce = false): boolean => {
+    setUiFile(f);
+    if (f.error) { toast(`${f.error} – using the built-in lists; fix the file or Apply new settings to replace it.`, "error"); return false; }
+    if (!f.text) return true;
+    try {
+      const { catalog: c, warnings } = normalizeCatalog(JSON.parse(f.text));
+      setCatalog(c);
+      if (warnings.length) toast(`${fileName(f)}: ${warnings.length} entr${warnings.length > 1 ? "ies" : "y"} ignored – ${warnings[0]}`, "info");
+      else if (announce) toast(`Reloaded ${fileName(f)}`, "success");
+      return true;
+    } catch (e) {
+      toast(`${fileName(f)} could not be read: ${(e as Error).message}`, "error");
+      return false;
+    }
+  };
+
+  const reloadUiConfig = async (announce = true) => {
+    try {
+      let f = await loadUiConfig();
+      // first start next to the exe: create the file from the current lists so it can be found and shared
+      if (!f.text && !f.error && f.backend !== "browser" && f.canSave) {
+        try { f = await saveUiConfig(f, JSON.stringify(catalogRef.current, null, 2) + "\n"); } catch { /* read-only folder: keep defaults */ }
+      }
+      adoptUiFile(f, announce);
+    } catch (e) {
+      toast(`Could not load the dropdown lists: ${(e as Error).message}`, "error");
+    }
+  };
+  useEffect(() => { void reloadUiConfig(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Apply edited settings: save ui_config.json, then update the dropdowns (and, if wanted, renamed values). */
   const applySettings = async (next: Catalog, renames: Rename[]) => {
     const use = catalogUsage(root);
     const used = renames.map((r) => ({ r, n: use.get(usageKey(r.source, r.from, r.manufacturer ?? "", r.model ?? "")) ?? 0 })).filter((x) => x.n > 0);
-    let updated = 0;
+    let doRename = false;
     if (used.length) {
       const answer = await confirm({
         title: "Update the open configuration?",
@@ -153,15 +190,35 @@ function Studio() {
           <p style={{ marginBottom: 0 }}>Update them to the new names? Keeping them flags the old values for review.</p>
         </>),
       });
-      if (answer === "confirm") {
-        dispatch({ type: "mutateDoc", recipe: (r) => { applyRenames(r, renames); } });
-        updated = used.reduce((a, x) => a + x.n, 0);
-      }
+      doRename = answer === "confirm";
     }
+
+    const text = JSON.stringify(next, null, 2) + "\n";
+    const base: UiConfigState = uiFile ?? { backend: "browser", path: null, text: null, modified: null, canSave: true, error: null };
+    let saved: UiConfigState;
+    try {
+      saved = await saveUiConfig(base, text);
+    } catch (e) {
+      if (!(e instanceof UiConfigConflict)) { toast(`Settings not saved: ${(e as Error).message}`, "error"); return; }
+      const answer = await confirm({
+        title: `${fileName(base)} was changed`,
+        message: <>Someone else saved <code>{base.path}</code> after you opened Settings. Replace their lists with yours, or load their version and discard your changes?</>,
+        confirmLabel: "Replace with mine", extraLabel: "Load their version", cancelLabel: "Back to Settings", danger: true,
+      });
+      if (answer === "extra") { adoptUiFile(e.current, true); setSettingsAt(null); return; }
+      if (answer !== "confirm") { setUiFile(e.current); return; }
+      try { saved = await saveUiConfig(e.current, text); } catch (e2) { toast(`Settings not saved: ${(e2 as Error).message}`, "error"); return; }
+    }
+    setUiFile(saved);
     setCatalog(next);
-    storage.set(CATALOG_KEY, JSON.stringify(next));
+    let updated = 0;
+    if (doRename) {
+      dispatch({ type: "mutateDoc", recipe: (r) => { applyRenames(r, renames); } });
+      updated = used.reduce((a, x) => a + x.n, 0);
+    }
     setSettingsAt(null);
-    toast(updated ? `Settings applied – ${updated} value(s) updated in this configuration` : "Settings applied", "success");
+    const where = saved.backend === "browser" ? "in this browser" : `to ${fileName(saved)}`;
+    toast(`Settings saved ${where}${updated ? ` – ${updated} value(s) updated in this configuration` : ""}`, "success");
   };
   useEffect(() => { storage.set("vision-studio.detailsWidth", String(detailsW)); }, [detailsW]);
   useEffect(() => { setActiveInput(null); }, [state.selectedId]);
@@ -508,7 +565,8 @@ function Studio() {
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
       {settingsAt && (
-        <SettingsWindow catalog={catalog} usage={catalogUsage(root)} initialSection={settingsAt}
+        <SettingsWindow key={uiFile?.modified ?? 0} catalog={catalog} usage={catalogUsage(root)} initialSection={settingsAt}
+          storage={uiFile} onReload={() => void reloadUiConfig(true)}
           onApply={(c, r) => void applySettings(c, r)} onClose={() => setSettingsAt(null)} />
       )}
       {dragOver && <div className="drop-overlay"><Icon name="folder" size={40} /><span>Drop a configuration JSON to open it</span></div>}

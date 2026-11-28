@@ -5,7 +5,7 @@ import {
   type Catalog, type CatalogOption, type Rename, type SettingsSection,
 } from "../core/catalog";
 import type { CatalogSource } from "../core/schema";
-import { openFile, saveFile } from "../platform";
+import { openFile, saveFile, type UiConfigState } from "../platform";
 import { Icon, NodeIcon } from "./icons";
 import { useOverlay } from "./overlays";
 import type { IconName } from "../core/model";
@@ -129,9 +129,12 @@ export interface SettingsProps {
   initialSection?: SettingsSection;
   onApply: (catalog: Catalog, renames: Rename[]) => void;
   onClose: () => void;
+  storage: UiConfigState | null;   // ui_config.json location / permissions
+  onReload: () => void;
 }
 
-export function SettingsWindow({ catalog, usage, initialSection = "features", onApply, onClose }: SettingsProps) {
+export function SettingsWindow({ catalog, usage, initialSection = "features", onApply, onClose, storage, onReload }: SettingsProps) {
+  const readOnly = storage ? !storage.canSave : false;
   const { confirm, toast } = useOverlay();
   const [draft, setDraft] = useState<Draft>(() => toDraft(catalog));
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -160,7 +163,11 @@ export function SettingsWindow({ catalog, usage, initialSection = "features", on
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const apply = () => { if (!errors.size) onApply(result, renamesOf(draft)); };
+  const apply = () => { if (!errors.size && !readOnly) onApply(result, renamesOf(draft)); };
+  const reload = async () => {
+    if (dirty && (await confirm({ title: "Reload the lists?", message: "Your unapplied changes will be discarded.", confirmLabel: "Reload", danger: true })) !== "confirm") return;
+    onReload();
+  };
   const resetAll = async () => {
     if ((await confirm({ title: "Reset all lists?", message: "Replace every list with the shipped defaults. Values used in the open configuration that are not in the defaults will be flagged.", confirmLabel: "Reset", danger: true })) === "confirm")
       setDraft(toDraft(defaultCatalog(), false));
@@ -205,24 +212,42 @@ export function SettingsWindow({ catalog, usage, initialSection = "features", on
             })}
           </nav>
           <section className="settings-main">
+            {readOnly && (
+              <div className="banner banner-warning settings-banner"><Icon name="info" size={16} />
+                <div className="banner-body">These lists come from <code>{storage?.path}</code> on the PC running Vision Studio and are read-only here.
+                  Changes can only be saved on that PC.</div></div>
+            )}
+            {storage?.error && (
+              <div className="banner banner-error settings-banner"><Icon name="error" size={16} />
+                <div className="banner-body">{storage.error}. The built-in lists are shown; Apply replaces the file with them.</div></div>
+            )}
             <h3>{meta.title}</h3>
             <p className="muted">{meta.help}</p>
+            <fieldset className="settings-fields" disabled={readOnly}>
             {section === "hardware"
               ? <HardwareEditor hardware={draft.hardware} onChange={(h) => set("hardware", h)} usage={usage} errors={errors} />
               : <ListEditor key={section} items={draft[section as ListKey]} onChange={(xs) => set(section as ListKey, xs)}
                   errors={errors} hex={section === "dataTypes"}
                   usageOf={(x) => (x.orig === undefined ? 0 : usage.get(usageKey(SOURCE_OF[section as ListKey], x.orig)) ?? 0)}
                   valueLabel={VALUE_LABEL[section as ListKey]} placeholder={PLACEHOLDER[section as ListKey]} />}
+            </fieldset>
           </section>
         </div>
         <footer className="settings-foot">
-          <button className="btn btn-sm" onClick={() => void doImport()}><Icon name="folder" size={14} />Import…</button>
+          <button className="btn btn-sm" onClick={() => void doImport()} disabled={readOnly}><Icon name="folder" size={14} />Import…</button>
           <button className="btn btn-sm" onClick={() => void doExport()}><Icon name="save" size={14} />Export…</button>
-          <button className="btn btn-sm btn-ghost" onClick={() => void resetAll()}><Icon name="restore" size={14} />Reset to defaults</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => void resetAll()} disabled={readOnly}><Icon name="restore" size={14} />Reset to defaults</button>
+          <span className="settings-source" title={storage?.path ?? undefined}>
+            <Icon name={storage?.backend === "browser" || !storage ? "globe" : readOnly ? "info" : "save"} size={13} />
+            {!storage || storage.backend === "browser" ? "Stored in this browser"
+              : readOnly ? `Read-only · ${storage.path}` : storage.path}
+            {storage && storage.backend !== "browser" && <button className="link small" onClick={() => void reload()}>Reload</button>}
+          </span>
           <span className="spacer" />
           {errors.size > 0 && <span className="sev-error small"><Icon name="error" size={13} /> Fix {errors.size} entr{errors.size > 1 ? "ies" : "y"} to apply</span>}
           <button className="btn" onClick={() => void close()}>Cancel</button>
-          <button className="btn btn-primary" disabled={!dirty || errors.size > 0} onClick={apply}>Apply</button>
+          <button className="btn btn-primary" disabled={!dirty || errors.size > 0 || readOnly} onClick={apply}
+            title={readOnly ? "Read-only: change the lists on the PC running Vision Studio" : undefined}>Apply</button>
         </footer>
       </div>
     </div>

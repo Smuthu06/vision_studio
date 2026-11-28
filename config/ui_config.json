@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "value": "DataLogger",
+      "description": "Logs frame data to disk"
+    },
+    {
+      "value": "FaultInjection",
+      "description": "Enables controlled error injection"
+    }
+  ],
+  "imagers": [
+    {
+      "value": "SENSOR_MODEL_X",
+      "description": "Example sensor"
+    },
+    {
+      "value": "IMX_SERIES",
+      "description": "Example sensor family"
+    }
+  ],
+  "serializers": [
+    {
+      "value": "SER_IC_PART_A",
+      "description": "Example camera serializer"
+    }
+  ],
+  "hardware": [
+    {
+      "name": "NationalInstruments",
+      "models": [
+        {
+          "name": "NI1487",
+          "description": "PXIe FPGA frame grabber / SerDes interface",
+          "serializers": [
+            "SER_IC_PART_A"
+          ],
+          "deserializers": [
+            "DES_IC_PART_B"
+          ]
+        }
+      ]
+    }
+  ],
+  "imageFormats": [
+    {
+      "value": "raw8",
+      "description": "RAW 8-bit"
+    },
+    {
+      "value": "raw10",
+      "description": "RAW 10-bit"
+    },
+    {
+      "value": "raw12",
+      "description": "RAW 12-bit"
+    },
+    {
+      "value": "raw14",
+      "description": "RAW 14-bit"
+    },
+    {
+      "value": "raw16",
+      "description": "RAW 16-bit"
+    }
+  ],
+  "dataTypes": [
+    {
+      "value": "0x12",
+      "description": "Embedded 8-bit non-image data"
+    },
+    {
+      "value": "0x28",
+      "description": "RAW6"
+    },
+    {
+      "value": "0x29",
+      "description": "RAW7"
+    },
+    {
+      "value": "0x2A",
+      "description": "RAW8"
+    },
+    {
+      "value": "0x2B",
+      "description": "RAW10"
+    },
+    {
+      "value": "0x2C",
+      "description": "RAW12"
+    },
+    {
+      "value": "0x2D",
+      "description": "RAW14"
+    },
+    {
+      "value": "0x2E",
+      "description": "RAW16"
+    },
+    {
+      "value": "0x2F",
+      "description": "RAW20"
+    }
+  ]
+}

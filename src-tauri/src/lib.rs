@@ -6,12 +6,27 @@
 //!                     a tray icon offers "Open in browser" and "Quit".
 
 mod config;
+mod ui_config;
 mod web;
 
 use config::{Config, Mode, MIN_HEIGHT, MIN_WIDTH};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use std::sync::Arc;
+use tauri::{App, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
+use ui_config::{SaveError, Store, UiConfigFile};
+
+/// Desktop mode: read ui_config.json (the Settings lists).
+#[tauri::command]
+fn ui_config_load(store: State<'_, Arc<Store>>) -> UiConfigFile {
+    store.load(true)
+}
+
+/// Desktop mode: save ui_config.json if it is unchanged since `base_modified`.
+#[tauri::command]
+fn ui_config_save(store: State<'_, Arc<Store>>, text: String, base_modified: Option<u64>) -> Result<UiConfigFile, SaveError> {
+    store.save(&text, base_modified)
+}
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -20,6 +35,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![ui_config_load, ui_config_save])
         .setup(move |app| {
             let mut extra = Vec::new();
             if let Ok(d) = app.path().app_config_dir() { extra.push(d); }
@@ -29,6 +45,9 @@ pub fn run() {
                 Some(p) => eprintln!("Vision Studio: using {}", p.display()),
                 None => eprintln!("Vision Studio: no INI file found, using defaults"),
             }
+            let store = Arc::new(Store::new(cfg.ui_config_path()));
+            eprintln!("Vision Studio: dropdown lists in {}", store.path().display());
+            app.manage(store);
             match cfg.mode {
                 Mode::Desktop => open_desktop_window(app, &cfg)?,
                 Mode::Web => start_web_mode(app, &cfg)?,
@@ -72,7 +91,8 @@ fn open_desktop_window(app: &mut App, cfg: &Config) -> tauri::Result<()> {
 
 fn start_web_mode(app: &mut App, cfg: &Config) -> tauri::Result<()> {
     let url = cfg.url();
-    if let Err(msg) = web::serve(app.handle().clone(), &cfg.host, cfg.port) {
+    let store = app.state::<Arc<Store>>().inner().clone();
+    if let Err(msg) = web::serve(app.handle().clone(), &cfg.host, cfg.port, store) {
         let handle = app.handle().clone();
         app.dialog()
             .message(format!("{msg}\n\nChange [web] port in the INI file (or close the program using it) and start Vision Studio again."))

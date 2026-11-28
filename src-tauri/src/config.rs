@@ -25,6 +25,8 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub open_browser: bool,
+    /// `[app] ui_config` as written (path of the dropdown lists file).
+    pub ui_config: String,
     /// The INI file that was used (None = built-in defaults).
     pub source: Option<PathBuf>,
     /// Problems found while reading the file / arguments (shown to the user).
@@ -44,6 +46,7 @@ impl Default for Config {
             host: "127.0.0.1".into(),
             port: 8080,
             open_browser: true,
+            ui_config: "ui_config.json".into(),
             source: None,
             warnings: Vec::new(),
         }
@@ -115,6 +118,9 @@ impl Config {
                 None => self.warnings.push(format!("{} – use 'desktop' or 'web'; starting in {} mode", bad("mode"),
                     if self.mode == Mode::Web { "web" } else { "desktop" })),
             },
+            ("app", "ui_config") => {
+                if value.is_empty() { self.warnings.push(bad("ui_config path")); } else { self.ui_config = value.to_string(); }
+            }
             ("desktop", "width") => match value.parse::<f64>() {
                 Ok(w) if w.is_finite() && w > 0.0 => self.width = w.max(MIN_WIDTH),
                 _ => self.warnings.push(bad("width")),
@@ -175,6 +181,15 @@ impl Config {
             }
             i += 1;
         }
+    }
+
+    /// Absolute path of ui_config.json: relative to the INI file's folder,
+    /// or to the executable's folder when no INI file was found.
+    pub fn ui_config_path(&self) -> PathBuf {
+        let base = self.source.as_ref().and_then(|p| p.parent().map(Path::to_path_buf))
+            .or_else(|| std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)))
+            .unwrap_or_else(|| PathBuf::from("."));
+        crate::ui_config::resolve(&self.ui_config, &base)
     }
 
     pub fn url(&self) -> String {
@@ -261,6 +276,7 @@ mod tests {
         assert_eq!(c.mode, Mode::Desktop);
         assert_eq!((c.width, c.height, c.maximized), (1440.0, 900.0, false));
         assert_eq!((c.host.as_str(), c.port, c.open_browser), ("127.0.0.1", 8080, true));
+        assert_eq!(c.ui_config, "ui_config.json");
     }
 
     #[test]
@@ -310,6 +326,14 @@ mod tests {
         ]);
         let explicit = candidates(&["x".into(), "--config".into(), "D:/bench.ini".into()], Some(exe), &[]);
         assert_eq!(explicit, vec![PathBuf::from("D:/bench.ini")]);
+    }
+
+    #[test]
+    fn ui_config_path_is_relative_to_the_ini() {
+        let mut c = Config::default();
+        c.apply_ini("[app]\nui_config = lists/ui.json\n", "t.ini");
+        c.source = Some(PathBuf::from("/opt/vs/VisionStudio.ini"));
+        assert_eq!(c.ui_config_path(), PathBuf::from("/opt/vs/lists/ui.json"));
     }
 
     #[test]

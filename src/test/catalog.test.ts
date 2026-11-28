@@ -127,3 +127,12 @@ describe("usage and renames", () => {
     expect(byType(doc.root, "vc")[0].params.frameOutput[0].dataIdentifier).toBe("0x2E");
   });
 });
+
+describe("shipped ui_config.json", () => {
+  it("is exactly the built-in defaults", () => {
+    const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, "../../config/ui_config.json"), "utf8"));
+    const { catalog, warnings } = normalizeCatalog(shipped);
+    expect(warnings).toEqual([]);
+    expect(catalog).toEqual(defaultCatalog());
+  });
+});
