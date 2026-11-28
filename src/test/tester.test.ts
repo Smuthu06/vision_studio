@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { produce } from "immer";
 import sample from "../assets/sample.json";
 import { cascadeTesterCamera, defaultCatalog, optionsFor, type Catalog, type TesterContext } from "../core/catalog";
 import { configFileName } from "../core/filename";
@@ -252,6 +253,34 @@ describe("tester configuration (CTP cameraTester schema)", () => {
     const out2 = exportTester(t, c2) as any;
     expect(out2.cameraTester.testModes[0].cameraModels[0].channelConfiguration[0].i2cWorker.i2cCheckingConfig).toBeNull();
     expect(schemaIssues(t, c2).filter((i) => i.nodeId === w.id).map((i) => i.severity)).toEqual(["warning"]);
+  });
+
+  it("reuses the written camera models for the schema check only while nothing changed", () => {
+    const c = ctx({ dirs: { bitfile: "/a" } });
+    const { t } = complete(c);
+    const cams = (r: CNode, cat: Catalog) => (exportTester(r, cat, true) as any).cameraTester.testModes[0].cameraModels;
+    const first = cams(t, c)[0];
+    expect(cams(t, c)[0]).toBe(first);                                  // same node + catalog: reused
+    expect((exportTester(t, c) as any).cameraTester.testModes[0].cameraModels[0]).not.toBe(first); // normal export: always fresh
+    // edit the camera model the immer way (new node objects along the path)
+    const t2 = produce(t, (d) => { d.children[0].children[0].params.deviceResource = "PXI9Slot9"; });
+    expect(cams(t2, c)[0].deviceResource).toBe("PXI9Slot9");
+    // other settings (catalog): written again
+    const c2 = { ...c, ctx: { ...c.ctx!, dirs: { bitfile: "/b" } } };
+    expect(cams(t2, c2)[0].fpgaBitFile).toBe("/b/FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx");
+    // the problems follow the edit
+    const t3 = produce(t2, (d) => { d.children[0].children[0].params.deviceMode = "nonsense"; });
+    expect(validateTree(t3, new TreeIndex(t3), c2).some((i) => i.field === "deviceMode")).toBe(true);
+  });
+
+  it("caches dropdown lists only during one validation pass", () => {
+    const c = ctx();
+    expect(optionsFor("projectCameras", c)).not.toBe(optionsFor("projectCameras", c));
+    const p = project();
+    const c2 = ctx({}, p);
+    const before = optionsFor("projectCameras", c2).values;
+    findChild(p, "cameras")!.children[0].params.model = "Renamed";      // outside a pass: seen right away
+    expect(optionsFor("projectCameras", c2).values).not.toEqual(before);
   });
 
   it("gives every channel an I2C worker and every virtual channel a frame analysis worker", () => {

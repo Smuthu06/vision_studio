@@ -56,7 +56,7 @@ export function BottomPanel({ tab, setTab, height, setHeight, issues, idx, onIss
     visit(idx.root);
     return [...issues].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1) || (order.get(a.nodeId)! - order.get(b.nodeId)!));
   }, [issues, idx]);
-  const jsonText = tab === "json" ? (scope === "doc" ? wholeDoc() : docJson(previewNode)) : "";
+  const jsonText = useMemo(() => (tab === "json" ? (scope === "doc" ? wholeDoc() : docJson(previewNode)) : ""), [tab, scope, wholeDoc, docJson, previewNode]);
 
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();

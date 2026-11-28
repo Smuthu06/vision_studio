@@ -406,9 +406,32 @@ src-tauri/       native shell (Rust): INI config (config.rs), web-mode server (w
                  mode switch + tray (lib.rs), dialog/fs plugins, permissions, icons
 config/          vision-studio.ini template + README for the portable folder
 build-windows.bat  Windows build: exe + ini (+ installers)
-e2e/flow.py      Playwright test: builds a full config from an empty project and saves it
-e2e/settings.py  Playwright test: Settings lists drive the dropdowns, renames, cascade, persistence
+e2e/run_all.sh   full regression (see "Testing and performance" below)
+e2e/*.py         Playwright tests: flow, settings, project_folder, bench_settings, tester, large_tree
+e2e/fixtures/    bench folder used by the tests (project files, bit files, datalogger, I2C files)
+perf/            benchmarks: perf.ts (core work per edit), ui_perf.py (browser), profile_validate.ts
 ```
+
+### Testing and performance
+
+`e2e/run_all.sh` runs everything on Ubuntu: type check, schema validator check, unit tests, Rust
+tests, clippy (warnings fail), a fresh build, then every Playwright suite against the real binary
+in web mode, each with its own bench folder. Needs node, cargo, python3 with Playwright, and
+xvfb-run. `--no-build` reuses the last binary.
+
+Benchmarks:
+* `npx vite-node perf/perf.ts`: cost of load, validation, build guide and export for a small
+  and a large project and tester (≈1300 nodes).
+* `npx vite-node perf/perf.ts --write <bench>` writes the large files into a bench folder, then
+  `python perf/ui_perf.py <url>` measures in Chromium: open time, cost per keystroke, JS heap,
+  DOM nodes and idle CPU.
+
+What keeps large documents fast:
+* **Tree:** above 200 visible rows, only the rows in view are rendered. Rows are memoized on their
+  node, and immer keeps unchanged nodes identical, so an edit re-renders only the changed path.
+* **Validation:** dropdown option lists are computed once per validation pass. The schema check
+  reuses the written JSON of camera models that did not change.
+* **Schema check:** the validator is precompiled, because the app's CSP doesn't allow `eval`.
 
 **Adding a node type.** Add an entry to `DEFS` in `src/core/model.ts` with its fields,
 tables, child types and checks, and serialise it in `nodeToJson` / `documentFromJson`. The

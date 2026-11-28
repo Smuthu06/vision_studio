@@ -36,7 +36,7 @@ pub struct SaveError {
     pub kind: String,
     pub message: String,
     /// For conflicts: the file as it is on disk now.
-    pub current: Option<UiConfigFile>,
+    pub current: Option<Box<UiConfigFile>>, // boxed: keeps the Err variant small
 }
 
 impl SaveError {
@@ -104,7 +104,7 @@ impl Store {
         let current = mtime_ms(&self.path);
         if current != base_modified {
             let mut err = SaveError::new("conflict", format!("{} was changed by someone else after you opened it", self.name()));
-            err.current = Some(self.load(true));
+            err.current = Some(Box::new(self.load(true)));
             return Err(err);
         }
         let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));

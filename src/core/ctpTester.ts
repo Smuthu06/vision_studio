@@ -91,7 +91,16 @@ interface Ctx {
   project: CNode | null;
   projectCamera: (model: Json) => CNode | undefined;
   emc: boolean;
+  /** validation only: reuse the written JSON of camera models that did not change (never handed out) */
+  reuse?: boolean;
 }
+
+/**
+ * Written camera models, per node: immer keeps unchanged nodes identical, so after an edit only the
+ * camera model that was edited is written again for the schema check. Keyed by node; valid for
+ * the same catalog and mode. Only used for the check, whose JSON nobody else sees or changes.
+ */
+const cameraJson = new WeakMap<CNode, { catalog: Catalog; mode: Json; json: Json }>();
 function makeCtx(catalog: Catalog): Ctx {
   const project = catalog.ctx?.project?.root as CNode | null ?? null;
   const cams = project ? findChild(project, "cameras")?.children ?? [] : [];
@@ -100,8 +109,8 @@ function makeCtx(catalog: Catalog): Ctx {
 }
 
 // ---------------------------------------------------------------------------- writing
-export function exportTester(root: CNode, catalog: Catalog): Json {
-  const x = makeCtx(catalog);
+export function exportTester(root: CNode, catalog: Catalog, reuse = false): Json {
+  const x = { ...makeCtx(catalog), reuse };
   const s = src(root);
   const p = root.params;
   return {
@@ -146,7 +155,14 @@ export function exportMode(m: CNode, x: Ctx): Json {
     features,
     ...(x.emc || s.multiple_display !== undefined ? { multiple_display: m.params.multipleDisplay === true } : {}),
     hardwareInfo: x.project ? hw : s.hardwareInfo ?? [],
-    cameraModels: m.children.map((c) => exportCamera(c, mode, x)),
+    cameraModels: m.children.map((c) => {
+      if (!x.reuse) return exportCamera(c, mode, x);
+      const hit = cameraJson.get(c);
+      if (hit && hit.catalog === x.catalog && hit.mode === mode) return hit.json;
+      const json = exportCamera(c, mode, x);
+      cameraJson.set(c, { catalog: x.catalog, mode, json });
+      return json;
+    }),
   };
 }
 
@@ -365,7 +381,7 @@ function i2cCheckingIssues(root: CNode, catalog: Catalog): Issue[] {
 }
 
 function schemaErrors(root: CNode, catalog: Catalog): Issue[] {
-  const json = exportTester(root, catalog);
+  const json = exportTester(root, catalog, true);
   const errs = validate(json);
   if (!errs.length) return [];
   const out: Issue[] = [];

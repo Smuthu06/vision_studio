@@ -1,0 +1,203 @@
+{
+  "project": {
+    "author": "engineer_user",
+    "emailAddress": "engineer@company.com",
+    "version": "V.1.0.0",
+    "date": "01-01-2026",
+    "project": "sample",
+    "projectModes": [
+      {
+        "mode": "CaptureMode",
+        "features": [
+          "DataLogger",
+          "EMCfeature"
+        ]
+      },
+      {
+        "mode": "PassthroughMode",
+        "features": [
+          "DataLogger",
+          "FaultInjection"
+        ]
+      }
+    ],
+    "cameraModels": [
+      {
+        "model": "ADAS_Camera_Model_A",
+        "packetFormat": "raw16",
+        "imager": "SENSOR_MODEL_X",
+        "operatingVoltage": 12,
+        "serializer": "SER_IC_PART_A",
+        "eeprom": {
+          "Lenght": 0,
+          "Address": []
+        },
+        "imagerAddress": 0,
+        "eepromHashRegAddress": 0,
+        "lenghtHash": 0,
+        "hw": [
+          {
+            "CaptureMode": {
+              "manufacture": "NationalInstruments",
+              "model": "NI1487",
+              "deserializer": "DES_IC_PART_B"
+            }
+          },
+          {
+            "passthroughMode": {
+              "manufacture": "NationalInstruments",
+              "model": "NI1487",
+              "serializer": "SER_IC_PART_A",
+              "deserializer": "DES_IC_PART_B",
+              "gpioRouting": [
+                {
+                  "direction": "SO to SI",
+                  "serialChannel": 0,
+                  "source": "GPIO 0",
+                  "destination": "GPIO 0"
+                },
+                {
+                  "direction": "SO to SI",
+                  "serialChannel": 0,
+                  "source": "GPIO 1",
+                  "destination": "GPIO 1"
+                }
+              ]
+            }
+          }
+        ],
+        "frameInformation": [
+          {
+            "virtualChannelNumber": 0,
+            "virtualChannelName": "Front",
+            "fps": {
+              "max": 30.1,
+              "min": 29.9
+            },
+            "frameOutput": [
+              {
+                "name": "Image",
+                "dataIdentifier": "0x2A",
+                "dataFormat": "raw16",
+                "xSize": 1824,
+                "ySize": 1536
+              },
+              {
+                "name": "Header",
+                "dataIdentifier": "0x12",
+                "dataFormat": "raw16",
+                "xSize": 1824,
+                "ySize": 2,
+                "embeddedLine": [
+                  {
+                    "lineNumber": 0,
+                    "tag_included": false,
+                    "byte_order": "Little Indian",
+                    "info": [
+                      {
+                        "name": "Frame Counter",
+                        "offset": 60,
+                        "length": 8,
+                        "Formula": ""
+                      },
+                      {
+                        "name": "Sensor Temperature",
+                        "offset": 6,
+                        "length": 1,
+                        "Formula": "x - 50"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "faultInjection": {
+          "embeddedLine": [
+            {
+              "faultName": "Over-Temperature CH0",
+              "description": "Insert Fault in EL",
+              "virtualChannel": 0,
+              "mode": 0,
+              "faultValues": "80",
+              "dataIdentifier": 13,
+              "position": 6,
+              "length": 1,
+              "lineNumber": 0,
+              "crcAlgorithm": 0,
+              "crcPosition": 0,
+              "enableMipiCrcFault": false,
+              "operation": 0,
+              "frameQuantity": 0
+            }
+          ],
+          "i2c": [
+            {
+              "faultName": "CRC-Corruption_SerDesInit_1",
+              "description": "Corrupts CRC value during serializer Initialization",
+              "slaveAdress": 17,
+              "i2cMode": 1,
+              "registerAdress": "3180",
+              "commandType": 0,
+              "interceptAttempt": 255,
+              "faultValues": "CC",
+              "setAckNack": 0
+            }
+          ]
+        },
+        "i2c_monitoring": {
+          "register_monitor": [
+            {
+              "Mode": "Read",
+              "Slave Address": 81,
+              "Register(s)": [
+                0,
+                19
+              ],
+              "Mask": 8,
+              "Expectation": 8,
+              "Error String": "DES LINK LOCK STATUS ERR for Link A 0x0013[3]",
+              "Link Options": "Link A",
+              "Bit Mode": "16-Bit",
+              "Read Bytes": 1
+            }
+          ],
+          "error_count": [
+            {
+              "Mode": "Read",
+              "Slave Address": 81,
+              "Register(s)": [
+                0,
+                34
+              ],
+              "Mask": 0,
+              "Error Description": "DES DISPARITY ERRORS detected at Link A 0x22[7-0]",
+              "Link Options": "Link A"
+            }
+          ],
+          "temperature_monitor": [
+            {
+              "Mode": "Read",
+              "Slave Address": 53,
+              "Register(s)_IntegerBit": [
+                31,
+                64
+              ],
+              "Register(s)_FractionBit": [
+                31,
+                65
+              ],
+              "Min Limit": -40,
+              "Max Limit": 122,
+              "Value": 0,
+              "Description": "IMAGER SENSOR TEMP degC LinkA FAULT",
+              "Link Options": "Link A"
+            }
+          ]
+        }
+      }
+    ],
+    "schemaVersion": "1.0.0"
+  }
+}
