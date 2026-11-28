@@ -7,3 +7,9 @@ src-tauri/gen/
 .DS_Store
 *.tsbuildinfo
 release/
+
+# folders the dev server / build-linux.sh layout writes and reads (see dev/bench-api.ts)
+/configurations/
+/release/
+/fpga_bitfile/
+/datalogger_configuration/

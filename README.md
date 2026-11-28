@@ -27,11 +27,40 @@ node tree, validation, JSON round-trip and build guide, and is unit-tested on it
 
 ```bash
 npm install
-npm run dev            # web app at http://localhost:1420
+npm run dev            # web app at http://localhost:1420 – saves into the configuration folders
 npm test               # core unit tests (vitest)
 npm run build          # static web app in dist/  (host on any static server / intranet)
 npm run build:single   # one self-contained dist-single/index.html (open from disk or share)
 ```
+
+`npm run dev` and `npm run preview` serve the same web API as the native app
+(`dev/bench-api.ts`), so Save writes into the configuration folders and the tester
+dropdowns list the bit file, datalogger and I2C folders. At start-up the terminal prints the
+folders it uses. They come from the INI, resolved against its folder:
+
+* `VS_INI=/path/to/vision-studio.ini npm run dev` uses that INI.
+* Otherwise `release/VisionStudio/vision-studio.ini` is used if `build-linux.sh` created it.
+* Otherwise `config/vision-studio.ini` is used, treated as if it were in
+  `release/VisionStudio/`.
+
+So by default the dev server and the built app both use `<repo>/configurations/…`,
+`<repo>/fpga_bitfile` and `<repo>/datalogger_configuration`. These folders are in
+`.gitignore`. Only the PC running the server can save (`localhost` / `127.0.0.1`). The status
+bar shows the folder Save writes to, or *No folder access* when the page has no backend (a
+static `dist`, a file, or the online demo).
+
+### Linux (Ubuntu)
+
+```bash
+./build-linux.sh --deps      # first time: installs the Tauri packages with apt, then builds
+./build-linux.sh             # later builds
+./release/VisionStudio/vision-studio             # mode from release/VisionStudio/vision-studio.ini
+./release/VisionStudio/vision-studio --mode web  # browser UI on http://127.0.0.1:8080/
+```
+
+The script mirrors `build-windows.bat`. It produces `release/VisionStudio/` with the binary,
+`vision-studio.ini` and `ui_config.json`, and keeps an existing INI and `ui_config.json` on
+rebuilds.
 
 ### Desktop
 

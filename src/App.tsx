@@ -191,7 +191,12 @@ function Studio() {
       toast(`Could not load the dropdown lists: ${(e as Error).message}`, "error");
     }
   };
-  useEffect(() => { void reloadUiConfig(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const uiConfigStarted = useRef(false); // React StrictMode runs effects twice in dev: create the file once
+  useEffect(() => {
+    if (uiConfigStarted.current) return;
+    uiConfigStarted.current = true;
+    void reloadUiConfig(false);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Apply edited settings: save ui_config.json, then update the dropdowns (and, if wanted, renamed values). */
   const applySettings = async (next: Catalog, renames: Rename[]) => {

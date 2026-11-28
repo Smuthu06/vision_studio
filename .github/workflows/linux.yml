@@ -1,0 +1,31 @@
+name: linux
+
+# Ubuntu: build-linux.sh, then start the binary in web mode and save through the API.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - name: Build (build-linux.sh)
+        run: ./build-linux.sh --deps
+      - name: Smoke test (web mode)
+        run: |
+          sudo apt-get install -y xvfb
+          xvfb-run -a ./release/VisionStudio/vision-studio --mode web --port 18080 --no-browser > vs.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:18080/api/files/project >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:18080/ | grep -q "<div id=\"root\"" || { cat vs.log; exit 1; }
+          curl -sf -X PUT -H "X-Vision-Studio: 1" -H "Content-Type: application/json" \
+            -d '{"text":"{\"project\":{\"project\":\"sample\",\"version\":\"V.1.0.0\"}}"}' \
+            http://127.0.0.1:18080/api/files/project/sample_v1.0.0.json
+          test -f configurations/project_configuration/sample_v1.0.0.json || { cat vs.log; exit 1; }
+          echo "saved to $(realpath configurations/project_configuration/sample_v1.0.0.json)"
