@@ -44,6 +44,12 @@ export const NODE_DOCS: Record<NodeType, string> = {
     "Fault definitions the bench can inject while it routes the link in PassthroughMode: byte corruption inside CSI-2 embedded lines, and interception of I2C control transactions. Requires a project mode with the FaultInjection feature. Saved as \"faultInjection\".",
   monitoring:
     "Continuous link-health telemetry read over I2C while the bench runs: register checks against expected values, error counters and temperature sensors with limits. Saved as \"i2c_monitoring\".",
+  tester:
+    "Root of a tester configuration: identifies the test bench set-up (name, version, author) and the project configuration it was created for. The project decides which modes and camera models can be chosen. Right-click to add the modes the bench runs in.",
+  testerMode:
+    "One mode of the selected project in which the bench runs (for example CaptureMode). Right-click to add the camera models tested in this mode. Multiple Display is offered when the project enables EMCfeature.",
+  testerCamera:
+    "One camera model of the project as connected on this bench: which FPGA device (and resource) it uses, the bit file loaded into the FPGA, the datalogger configuration, the board defaults, and the bench channels (SI0–SI7, SO0–SO7) it occupies.",
 };
 
 // --------------------------------------------------------------------------
@@ -201,12 +207,41 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
   },
   fault: {},
   monitoring: {},
+  tester: {
+    testerName: { doc: "Name of the tester configuration. Together with the version it forms the file name <Tester Name>_v<version>.json in the tester configuration folder.", example: "HIL_Bench_01", tip: "Letters, digits and underscores only." },
+    version: { doc: "Version of this tester configuration. Changing it and saving writes a new file and keeps the old one.", example: "V.1.0.0" },
+    author: { doc: "User identifier of the engineer who created or last revised the tester configuration.", example: "engineer_user" },
+    emailAddress: { doc: "Contact email of the author.", example: "engineer@company.com" },
+    project: { doc: "The project configuration (JSON in the project configuration folder) this tester was created for. Its modes, camera models and hardware fill the dropdowns of the modes and camera models below.", example: "sample_v1.0.0.json", tip: "Choosing another project re-checks every mode and camera model against it." },
+  },
+  testerMode: {
+    mode: { doc: "A mode defined in the selected project configuration. Each mode can be added once.", example: "CaptureMode" },
+    multipleDisplay: { doc: "Shows the camera streams of this mode on multiple displays. Offered only when the selected project enables EMCfeature.", example: "Enabled" },
+  },
+  testerCamera: {
+    cameraModel: { doc: "Camera model of the selected project. Its hardware for this mode fills Device Manufacturer and Device Model.", example: "ADAS_Front_Camera" },
+    name: { doc: "Custom name of this camera model on the bench. It is shown in the tree, so several units of the same model can be told apart.", example: "Front_Left" },
+    deviceManufacturer: { doc: "Manufacturer of the hardware configured for this camera model in the project (Capture Hardware for CaptureMode, Passthrough Hardware for PassthroughMode).", example: "NationalInstruments" },
+    deviceModel: { doc: "Hardware model configured for this camera model and manufacturer in the project.", example: "NI1487" },
+    fpgaDevice: { doc: "The FPGA device of the bench this camera is connected to. The list is maintained in File › Settings › FPGA devices.", example: "PXIe-1487", tip: "Bit files are built per device; a bit file for another device gives a warning." },
+    deviceResources: { doc: "NI resource name used to open the FPGA device (as shown in NI MAX).", example: "RIO0" },
+    bitFile: { doc: "FPGA bit file (.lvbitx) loaded into the device. The list shows the files in the fpga_bitfile folder (bitfile_dir in the INI).", example: "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx" },
+    dataloggerConfiguration: { doc: "Datalogger configuration used for this camera. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI).", example: "datalogger_front.json" },
+    fpgaBoardDefaults: { doc: "Set of FPGA board defaults applied when the device is opened. The list is maintained in File › Settings › FPGA board defaults.", example: "Default" },
+  },
 };
 
 // --------------------------------------------------------------------------
 // Tables
 // --------------------------------------------------------------------------
 export const TABLE_DOCS: Record<string, { doc: string; columns: Record<string, InputDoc> }> = {
+  testerChannels: {
+    doc: "Bench channels used by this camera model and the name of the signal on each. SI0–SI7 are the deserializer inputs (camera → bench), SO0–SO7 the serializer outputs (bench → ECU). Each channel can be used once per camera model.",
+    columns: {
+      channel: { doc: "Bench channel: SI0–SI7 (inputs) or SO0–SO7 (outputs).", example: "SI0" },
+      name: { doc: "Name of the signal on this channel.", example: "Front" },
+    },
+  },
   gpio: {
     doc: "Routes general-purpose I/O signals across the bench while it is in the link (for example frame-sync from ECU to camera, or interrupt/error lines from camera to ECU). Each row forwards one FPGA source pin to one destination pin on one serial channel. Auto 1:1 adds GPIO n → GPIO n for every unrouted pin.",
     columns: {
@@ -357,7 +392,8 @@ export function constraintRows(spec: FieldSpec): Array<[string, string]> {
   }
   if (spec.pattern) rows.push(["Format", spec.hint?.replace(/^must (be |have the form )?/, "") ?? spec.pattern.source]);
   if (spec.requiresFeature) rows.push(["Requires", `${spec.requiresFeature} enabled in a project mode (otherwise read-only and not checked)`]);
-  if (spec.source) rows.push(["Values from", `Settings › ${SOURCE_INFO[spec.source].label}${spec.strict ? "" : " (other values give a warning)"}`]);
+  if (spec.source) rows.push(["Values from", `${SOURCE_INFO[spec.source].section ? "Settings › " : ""}${SOURCE_INFO[spec.source].label}${spec.strict ? "" : " (other values give a warning)"}`]);
+  if (spec.showIf) rows.push(["Shown when", `the project enables ${spec.showIf}`]);
   if (k === "enum" || k === "multi") {
     const opts = spec.options ?? [];
     rows.push(["Allowed", opts.length ? opts.map((o) => spec.optionLabels?.[o] ?? o).join(", ") : "— list is empty —"]);
@@ -384,6 +420,9 @@ export function jsonPathOf(node: CNode, idx: TreeIndex): string {
     case "frames": return `${jsonPathOf(parent!, idx)}.frameInformation`;
     case "fault": return `${jsonPathOf(parent!, idx)}.faultInjection`;
     case "monitoring": return `${jsonPathOf(parent!, idx)}.i2c_monitoring`;
+    case "tester": return "tester";
+    case "testerMode": return `tester.modes[${indexIn(parent!)}]`;
+    case "testerCamera": return `${jsonPathOf(parent!, idx)}.cameraModels[${indexIn(parent!)}]`;
   }
 }
 

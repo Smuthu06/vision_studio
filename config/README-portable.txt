@@ -38,6 +38,16 @@ Where configurations are saved
   In web mode only the PC running Vision Studio saves into the folder; other
   PCs download the file instead.
 
+Tester configurations
+  File > New > Tester asks for a project configuration (from project_dir)
+  and builds a tester for it: right-click the tester to add modes, a mode to
+  add camera models. Save writes <Tester Name>_v<version>.json into
+  tester_dir (default ../../configurations/tester_configuration).
+  The Bit File dropdown lists *.lvbitx in bitfile_dir (../../fpga_bitfile)
+  and Datalogger Configuration lists *.json in datalogger_dir
+  (../../datalogger_configuration). FPGA devices and FPGA board defaults are
+  lists in File > Settings.
+
 Requirements
   Windows 10 or 11 (64-bit). Desktop mode uses Microsoft Edge WebView2, which is
   preinstalled on Windows 10/11. If the window stays blank, install the

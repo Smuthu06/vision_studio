@@ -25,6 +25,8 @@ export const FEATURE_DATALOGGER = "DataLogger";
 export const FEATURE_FAULTINJECTION = "FaultInjection";
 /** Built-in feature: unlocks the EMC parameters of camera models (imager I2C address, EEPROM, hash). */
 export const FEATURE_EMC = "EMCfeature";
+/** Tester channels: deserializer inputs SI0–SI7 and serializer outputs SO0–SO7. */
+export const TESTER_CHANNELS = [...Array.from({ length: 8 }, (_, i) => `SI${i}`), ...Array.from({ length: 8 }, (_, i) => `SO${i}`)] as const;
 export const FEATURES = [FEATURE_DATALOGGER, FEATURE_FAULTINJECTION, FEATURE_EMC] as const;
 export const PACKET_FORMATS = ["raw8", "raw10", "raw12", "raw14", "raw16"] as const;
 export const HW_KEY_CAPTURE = "CaptureMode";
@@ -80,7 +82,12 @@ export type Kind = "str" | "int" | "float" | "enum" | "intenum" | "bool" | "mult
 /** Option lists maintained in the Settings window (see catalog.ts). */
 export type CatalogSource =
   | "features" | "imagers" | "serializers" | "manufacturers" | "models" | "hwSerializers" | "hwDeserializers"
-  | "imageFormats" | "dataTypes";
+  | "imageFormats" | "dataTypes"
+  // tester configuration – lists in ui_config.json
+  | "fpgaDevices" | "boardDefaults"
+  // tester configuration – from the selected project JSON and the bench folders
+  | "projectFiles" | "projectModes" | "projectCameras" | "projectManufacturers" | "projectDeviceModels"
+  | "bitfiles" | "dataloggers";
 
 export interface FieldSpec {
   key: string;               // dotted path into the node's JSON body
@@ -103,6 +110,7 @@ export interface FieldSpec {
   strict?: boolean;          // value outside the catalog list = error (else warning)
   optionLabels?: Record<string, string>; // display text per option value (filled by resolveSpec)
   requiresFeature?: string;  // editable (and validated) only when a project mode enables this feature
+  showIf?: string;           // shown (and validated) only when the (referenced) project enables this feature
 }
 
 export interface TableSpec {

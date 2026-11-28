@@ -29,6 +29,10 @@ pub struct Config {
     pub ui_config: String,
     /// `[app] project_dir` as written (folder the configurations are saved in).
     pub project_dir: String,
+    /// `[app] tester_dir`, `bitfile_dir`, `datalogger_dir` as written.
+    pub tester_dir: String,
+    pub bitfile_dir: String,
+    pub datalogger_dir: String,
     /// The INI file that was used (None = built-in defaults).
     pub source: Option<PathBuf>,
     /// Problems found while reading the file / arguments (shown to the user).
@@ -36,6 +40,9 @@ pub struct Config {
 }
 
 pub const DEFAULT_PROJECT_DIR: &str = "../../configurations/project_configuration";
+pub const DEFAULT_TESTER_DIR: &str = "../../configurations/tester_configuration";
+pub const DEFAULT_BITFILE_DIR: &str = "../../fpga_bitfile";
+pub const DEFAULT_DATALOGGER_DIR: &str = "../../datalogger_configuration";
 pub const MIN_WIDTH: f64 = 980.0;
 pub const MIN_HEIGHT: f64 = 620.0;
 
@@ -51,6 +58,9 @@ impl Default for Config {
             open_browser: true,
             ui_config: "ui_config.json".into(),
             project_dir: DEFAULT_PROJECT_DIR.into(),
+            tester_dir: DEFAULT_TESTER_DIR.into(),
+            bitfile_dir: DEFAULT_BITFILE_DIR.into(),
+            datalogger_dir: DEFAULT_DATALOGGER_DIR.into(),
             source: None,
             warnings: Vec::new(),
         }
@@ -125,8 +135,13 @@ impl Config {
             ("app", "ui_config") => {
                 if value.is_empty() { self.warnings.push(bad("ui_config path")); } else { self.ui_config = value.to_string(); }
             }
-            ("app", "project_dir") => {
-                if value.is_empty() { self.warnings.push(bad("project_dir path")); } else { self.project_dir = value.to_string(); }
+            ("app", "project_dir") | ("app", "tester_dir") | ("app", "bitfile_dir") | ("app", "datalogger_dir") => {
+                if value.is_empty() {
+                    self.warnings.push(bad(&format!("{key} path")));
+                } else {
+                    let v = value.to_string();
+                    match key { "project_dir" => self.project_dir = v, "tester_dir" => self.tester_dir = v, "bitfile_dir" => self.bitfile_dir = v, _ => self.datalogger_dir = v }
+                }
             }
             ("desktop", "width") => match value.parse::<f64>() {
                 Ok(w) if w.is_finite() && w > 0.0 => self.width = w.max(MIN_WIDTH),
@@ -199,6 +214,18 @@ impl Config {
     /// Absolute path of the project folder (same rule as ui_config).
     pub fn project_dir_path(&self) -> PathBuf {
         crate::ui_config::resolve(&self.project_dir, &self.base_dir())
+    }
+
+    /// The bench folders (project, tester, bit files, datalogger configurations).
+    pub fn folders(&self) -> crate::projects::Folders {
+        use crate::projects::ProjectDir;
+        let p = |v: &str| crate::ui_config::resolve(v, &self.base_dir());
+        crate::projects::Folders {
+            project: ProjectDir::new(self.project_dir_path()),
+            tester: ProjectDir::new(p(&self.tester_dir)),
+            bitfile: ProjectDir::read_only(p(&self.bitfile_dir), ".lvbitx"),
+            datalogger: ProjectDir::read_only(p(&self.datalogger_dir), ".json"),
+        }
     }
 
     fn base_dir(&self) -> PathBuf {
@@ -351,7 +378,8 @@ mod tests {
         c.source = Some(PathBuf::from("/opt/vs/VisionStudio.ini"));
         assert_eq!(c.ui_config_path(), PathBuf::from("/opt/vs/lists/ui.json"));
         assert_eq!(c.project_dir_path(), PathBuf::from("/opt/vs/../../configurations/project_configuration"));
-        c.apply_ini("[app]\nproject_dir = D:/bench/projects\n", "t.ini");
+        c.apply_ini("[app]\nproject_dir = D:/bench/projects\ntester_dir = T\nbitfile_dir = B\ndatalogger_dir = L\n", "t.ini");
+        assert_eq!((c.tester_dir.as_str(), c.bitfile_dir.as_str(), c.datalogger_dir.as_str()), ("T", "B", "L"));
         assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     }
 

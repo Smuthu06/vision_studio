@@ -12,19 +12,25 @@ import {
   I2C_REG_MODES, LINK_OPTIONS, MODE_CAPTURE, MODE_PASSTHROUGH, MONITOR_MODES, PACKET_FORMATS, PROJECT_MODES,
   RE_AUTHOR, RE_DATE, RE_EMAIL, RE_PROJECT_NAME, RE_SEMVER, RE_VERSION, SERIAL_CHANNEL_MAX, VC_MAX,
   VC_NAME_SUGGESTIONS, WARNING, checkRecord, getPath, isInt, isNum, isRealDate, ordered, todayDDMMYYYY,
-  checkValue, FEATURE_EMC, isEmpty, type FieldSpec, type Json, type Severity, type TableSpec,
+  checkValue, FEATURE_EMC, isEmpty, isRequired, TESTER_CHANNELS, type FieldSpec, type Json, type Severity, type TableSpec,
 } from "./schema";
 import {
-  cascadeHardware, defaultCatalog, defaultHardware, inCatalog, resolveSpec, SOURCE_INFO, type Catalog,
+  cascadeHardware, defaultCatalog, defaultHardware, inCatalog, missingHint, optionsFor, projectModeFeatures, resolveSpec,
+  SOURCE_INFO, type Catalog,
 } from "./catalog";
 
 export type NodeType =
   | "project" | "modes" | "mode" | "cameras" | "camera" | "hardware" | "hwCapture" | "hwPassthrough"
-  | "frames" | "vc" | "fault" | "monitoring";
+  | "frames" | "vc" | "fault" | "monitoring"
+  | "tester" | "testerMode" | "testerCamera";
+
+/** Which configuration a document is: decided by its root node. */
+export type DocKind = "project" | "tester";
+export const docKind = (root: CNode): DocKind => (root.type === "tester" ? "tester" : "project");
 
 export type IconName =
   | "project" | "modes" | "mode" | "camera" | "cameras" | "hardware" | "chip" | "film" | "vc" | "fault" | "gauge"
-  | "gpio" | "stream" | "inject" | "ic";
+  | "gpio" | "stream" | "inject" | "ic" | "tester" | "testerMode" | "testerCamera";
 
 export interface CNode {
   id: string;
@@ -275,6 +281,19 @@ export const TEMPERATURE_MONITOR_TABLE: TableSpec = {
   ],
 };
 
+export const CHANNEL_TABLE: TableSpec = {
+  key: "channels", title: "Channels", docId: "testerChannels", icon: "stream", addLabel: "Add Channel", itemName: "Channel",
+  help: "Bench channels used by this camera: deserializer inputs SI0–SI7 and serializer outputs SO0–SO7.",
+  columns: [
+    { key: "channel", label: "Channel", kind: "enum", options: TESTER_CHANNELS, default: "SI0", help: "SI0–SI7 (inputs) or SO0–SO7 (outputs)", width: 120 },
+    { key: "name", label: "Channel Name", default: "", help: "Name of the signal on this channel, e.g. Front", width: 260 },
+  ],
+  factory: (rows) => {
+    const used = new Set(rows.map((r) => r?.channel));
+    return { channel: TESTER_CHANNELS.find((c) => !used.has(c)) ?? TESTER_CHANNELS[0], name: "" };
+  },
+};
+
 // --------------------------------------------------------------------------
 // Node definitions
 // --------------------------------------------------------------------------
@@ -296,7 +315,7 @@ export interface NodeDef {
   label?: (n: CNode) => string;
   summary?: (n: CNode) => string;
   create?: (parent: CNode, idx: TreeIndex, catalog: Catalog) => CNode;
-  childOptions?: (n: CNode, idx: TreeIndex) => ChildOption[];
+  childOptions?: (n: CNode, idx: TreeIndex, catalog: Catalog) => ChildOption[];
   checks?: (n: CNode, idx: TreeIndex) => Issue[];
 }
 
@@ -320,12 +339,25 @@ const nextVcNumber = (frames: CNode): number | null => {
   return null;
 };
 
-/** {mode: Set(features)} of the project that the tree index belongs to. */
-/** Is `feature` enabled in any project mode? (case-insensitive) */
-export function featureEnabled(idx: TreeIndex, feature: string): boolean {
+/**
+ * Is `feature` enabled in any project mode? (case-insensitive)
+ * In a tester configuration: in the project JSON the tester refers to (pass the catalog with its ctx).
+ */
+export function featureEnabled(idx: TreeIndex, feature: string, catalog?: Catalog): boolean {
   const f = feature.toLowerCase();
-  for (const feats of projectModes(idx).values()) for (const x of feats) if (String(x).toLowerCase() === f) return true;
-  return false;
+  const sets = idx.root.type === "tester"
+    ? [...projectModeFeatures(catalog?.ctx?.project?.root).values()]
+    : [...projectModes(idx).values()].map((x) => [...x]);
+  return sets.some((feats) => feats.some((x) => String(x).toLowerCase() === f));
+}
+
+/**
+ * The record used to look up dropdown options for a node: its params plus, for tester
+ * camera models, the tester mode they belong to (`$mode`) – the project hardware differs per mode.
+ */
+export function optionRecord(n: CNode, idx: TreeIndex): Json {
+  if (n.type !== "testerCamera") return n.params;
+  return { ...n.params, $mode: idx.ancestor(n, "testerMode")?.params.mode };
 }
 
 export function projectModes(idx: TreeIndex): Map<string, Set<string>> {
@@ -558,6 +590,124 @@ export const DEFS: Record<NodeType, NodeDef> = {
     checks: (n, idx) => faultChecks(n, idx),
   },
 
+  // ------------------------------------------------------------------ tester configuration
+  tester: {
+    type: "tester", title: "Tester", icon: "tester", deletable: false,
+    description: "Tester configuration: the bench set-up used to test the camera models of one project configuration.",
+    childTypes: ["testerMode"],
+    fields: [
+      { key: "testerName", label: "Tester Name", pattern: RE_PROJECT_NAME, hint: "may only contain letters, digits and underscores", help: "e.g. HIL_Bench_01" },
+      { key: "version", label: "Version", pattern: RE_VERSION, hint: "must have the form V.<major>.<minor>.<patch>, e.g. V.1.0.0", help: "Format V.x.y.z, e.g. V.1.0.0" },
+      { key: "author", label: "Author", pattern: RE_AUTHOR, hint: "must be a short user name (letters, digits, _ . -)", help: "User identifier, e.g. engineer_user", placeholder: "engineer_user" },
+      { key: "emailAddress", label: "Email Address", pattern: RE_EMAIL, hint: "is not a valid email address", help: `Corporate email, e.g. engineer@${CORPORATE_EMAIL_DOMAIN || "company.com"}`, placeholder: `name@${CORPORATE_EMAIL_DOMAIN || "company.com"}` },
+      { key: "project", label: "Project Configuration", help: "The project JSON (in the project configuration folder) whose modes and camera models this tester uses", source: "projectFiles", strict: true },
+    ],
+    jsonOrder: ["testerName", "version", "author", "emailAddress", "project", "modes"],
+    defaultParams: () => ({ testerName: "New_Tester", version: "V.1.0.0", author: "", emailAddress: "", project: "" }),
+    label: (n) => String(n.params.testerName || "(unnamed tester)"),
+    summary: (n) => [n.params.project, `${n.children.length} mode(s)`].filter(Boolean).join(" · "),
+    childOptions: (n, _idx, catalog) => {
+      const { values, unknown } = optionsFor("projectModes", catalog, {});
+      const used = new Set(n.children.map((c) => c.params.mode));
+      const free = values.filter((m) => !used.has(m));
+      const enabled = unknown || free.length > 0;
+      return [{
+        label: "Add Mode", type: "testerMode", icon: "testerMode", enabled,
+        reason: enabled ? undefined : values.length ? "every mode of the project is already added" : "the selected project has no modes",
+        description: free.length ? `Next: ${free[0]}` : "A mode of the selected project, with its camera models",
+        create: () => mk("testerMode", { mode: free[0] ?? "", multipleDisplay: false }),
+      }];
+    },
+    checks: (n) => {
+      const e = n.params.emailAddress;
+      return CORPORATE_EMAIL_DOMAIN && typeof e === "string" && RE_EMAIL.test(e) && !e.toLowerCase().endsWith("@" + CORPORATE_EMAIL_DOMAIN)
+        ? [issue(WARNING, `Email Address should be a corporate address (*@${CORPORATE_EMAIL_DOMAIN})`, n, { field: "emailAddress" })] : [];
+    },
+  },
+
+  testerMode: {
+    type: "testerMode", title: "Mode", icon: "testerMode", singleton: false,
+    description: "A mode of the selected project in which the tester runs, and the camera models it tests in that mode.",
+    childTypes: ["testerCamera"],
+    fields: [
+      { key: "mode", label: "Mode", help: "Mode from the selected project configuration", source: "projectModes", strict: true },
+      { key: "multipleDisplay", label: "Multiple Display", kind: "bool", required: false, help: "Show the camera streams on multiple displays", showIf: FEATURE_EMC },
+    ],
+    jsonOrder: ["mode", "multipleDisplay", "cameraModels"],
+    defaultParams: () => ({ mode: "", multipleDisplay: false }),
+    label: (n) => String(n.params.mode || "(select a mode)"),
+    summary: (n) => `${n.children.length} camera model(s)`,
+    childOptions: (n, idx, catalog) => [{
+      label: "Add Camera Model", type: "testerCamera", icon: "testerCamera", enabled: true,
+      description: "A camera model of the project on this bench",
+      create: () => DEFS.testerCamera.create!(n, idx, catalog),
+    }],
+    checks: (n, idx) => {
+      const mode = n.params.mode;
+      return mode && idx.siblings(n).some((s) => s.params.mode === mode)
+        ? [issue(ERROR, `Mode '${mode}' is defined more than once`, n, { field: "mode" })] : [];
+    },
+  },
+
+  testerCamera: {
+    type: "testerCamera", title: "Camera Model", icon: "testerCamera", singleton: false, duplicable: true,
+    description: "One camera model of the project on this bench: the FPGA device it is connected to, the bit file and the channels.",
+    fields: [
+      { key: "cameraModel", label: "Camera Model", help: "Camera model from the selected project configuration", source: "projectCameras", strict: true },
+      { key: "name", label: "Camera Model Name", pattern: /\S/, hint: "must not be blank", help: "Custom name for this camera model on the bench; shown in the tree", placeholder: "e.g. Front_Camera" },
+      { key: "deviceManufacturer", label: "Device Manufacturer", help: "Hardware manufacturer configured for this camera model in the project", source: "projectManufacturers", strict: true },
+      { key: "deviceModel", label: "Device Model", help: "Hardware model configured for this camera model in the project", source: "projectDeviceModels", strict: true },
+      { key: "fpgaDevice", label: "FPGA Device", help: "FPGA device of the bench (list in Settings › FPGA devices)", source: "fpgaDevices" },
+      { key: "deviceResources", label: "Device Resources", help: "NI resource name of the FPGA device, e.g. RIO0 or PXI1Slot2", placeholder: "e.g. RIO0" },
+      { key: "bitFile", label: "Bit File", help: "FPGA bit file (.lvbitx) from the fpga_bitfile folder", source: "bitfiles", strict: true },
+      { key: "dataloggerConfiguration", label: "Datalogger Configuration", required: false, help: "Datalogger configuration (.json) from the datalogger_configuration folder", source: "dataloggers", strict: true },
+      { key: "fpgaBoardDefaults", label: "FPGA Board Defaults", help: "Board default set (list in Settings › FPGA board defaults)", source: "boardDefaults", strict: true },
+    ],
+    tables: [CHANNEL_TABLE],
+    jsonOrder: ["cameraModel", "name", "deviceManufacturer", "deviceModel", "fpgaDevice", "deviceResources", "bitFile",
+      "dataloggerConfiguration", "fpgaBoardDefaults", "channels"],
+    defaultParams: () => ({ cameraModel: "", name: "", deviceManufacturer: "", deviceModel: "", fpgaDevice: "", deviceResources: "",
+      bitFile: "", dataloggerConfiguration: "", fpgaBoardDefaults: "", channels: [] }),
+    label: (n) => String(n.params.name || n.params.cameraModel || "(new camera model)"),
+    summary: (n) => [n.params.cameraModel, n.params.fpgaDevice, `${(n.params.channels ?? []).length} channel(s)`].filter(Boolean).join(" · "),
+    create: (parent, idx, catalog) => {
+      const p = DEFS.testerCamera.defaultParams();
+      const mode = parent.params.mode;
+      const rec = { ...p, $mode: mode };
+      const first = (src: Parameters<typeof optionsFor>[0], r: Json = rec) => optionsFor(src, catalog, r).values[0] ?? "";
+      const used = new Set(parent.children.map((c) => c.params.cameraModel));
+      const cams = optionsFor("projectCameras", catalog, rec).values;
+      p.cameraModel = cams.find((c) => !used.has(c)) ?? cams[0] ?? "";
+      p.name = uniqueName(p.cameraModel || "Camera", new Set(parent.children.map((c) => c.params.name)));
+      p.deviceManufacturer = first("projectManufacturers", { ...p, $mode: mode });
+      p.deviceModel = first("projectDeviceModels", { ...p, $mode: mode });
+      p.fpgaDevice = first("fpgaDevices");
+      p.fpgaBoardDefaults = first("boardDefaults");
+      void idx;
+      return mk("testerCamera", p);
+    },
+    checks: (n, idx) => {
+      const out: Issue[] = [];
+      const name = n.params.name;
+      if (name && idx.siblings(n).some((s) => s.params.name === name)) out.push(issue(ERROR, `Camera model name '${name}' is used more than once in this mode`, n, { field: "name" }));
+      const rows = Array.isArray(n.params.channels) ? n.params.channels : [];
+      const seen = new Map<string, number>();
+      rows.forEach((r: Json, i: number) => {
+        const ch = r?.channel;
+        if (!ch) return;
+        if (seen.has(ch)) out.push(issue(ERROR, `Channel ${i + 1}: ${ch} is already used by channel ${seen.get(ch)! + 1}`, n, { table: "channels", row: i, column: "channel" }));
+        else seen.set(ch, i);
+      });
+      if (!rows.length) out.push(issue(WARNING, "No channels defined", n, { table: "channels" }));
+      // FPGA device vs bit file: bit files are built per device (…_NI1487_…lvbitx)
+      const dev = /(\d{4})\s*$/.exec(String(n.params.fpgaDevice ?? ""))?.[1];
+      const bit = /NI(\d{4})/i.exec(String(n.params.bitFile ?? ""))?.[1];
+      if (dev && bit && dev !== bit)
+        out.push(issue(WARNING, `Bit file ${n.params.bitFile} is built for NI${bit}, not for ${n.params.fpgaDevice}`, n, { field: "bitFile" }));
+      return out;
+    },
+  },
+
   monitoring: {
     type: "monitoring", title: "I2C Monitoring", icon: "gauge",
     description: "Continuous health verification of SerDes link integrity over I2C.",
@@ -683,24 +833,34 @@ function monitoringChecks(n: CNode): Issue[] {
  */
 export function checkFields(specs: readonly FieldSpec[], record: Json, catalog: Catalog,
   featureOn: (feature: string) => boolean = () => true): Array<[Severity, string, string]> {
-  // inputs locked behind a disabled feature are kept as they are and not checked
-  specs = specs.filter((s) => !s.requiresFeature || featureOn(s.requiresFeature));
+  // inputs locked or hidden behind a disabled feature are kept as they are and not checked
+  specs = specs.filter((s) => (!s.requiresFeature || featureOn(s.requiresFeature)) && (!s.showIf || featureOn(s.showIf)));
   if (!specs.some((s) => s.source)) return checkRecord(specs, record);
   if (record === null || typeof record !== "object" || Array.isArray(record)) return [[ERROR, "", "Entry must be a JSON object"]];
   const out: Array<[Severity, string, string]> = [];
   for (const spec of specs) {
     const value = getPath(record, spec.key);
     if (!spec.source) { for (const [sev, msg] of checkValue(spec, value)) out.push([sev, spec.key, msg]); continue; }
-    const where = `Settings › ${SOURCE_INFO[spec.source].label}`;
+    const settings = SOURCE_INFO[spec.source].section ? `Settings › ${SOURCE_INFO[spec.source].label}` : null;
     if (spec.strict) {
-      for (const [sev, msg] of checkValue(resolveSpec(spec, catalog, record), value))
-        out.push([sev, spec.key, sev === ERROR && !/ is required$/.test(msg) ? `${msg} (add it in ${where})` : msg]);
+      const resolved = resolveSpec(spec, catalog, record);
+      if (!resolved.options) { for (const [sev, msg] of checkValue(resolved, value)) out.push([sev, spec.key, msg]); continue; } // list unknown
+      const info = SOURCE_INFO[spec.source];
+      if (!settings && !resolved.options.length && info.empty && (isRequired(spec) || !isEmpty(value))) {
+        out.push([ERROR, spec.key, `${spec.label}: nothing to choose from – ${info.empty}`]);
+        continue;
+      }
+      for (const [sev, msg] of checkValue(resolved, value)) {
+        if (sev !== ERROR || / is required$/.test(msg)) out.push([sev, spec.key, msg]);
+        else if (settings) out.push([sev, spec.key, `${msg} (add it in ${settings})`]);
+        else out.push([sev, spec.key, `${spec.label} '${value}' is ${missingHint(spec.source)}`]);
+      }
       continue;
     }
     const base = checkValue(spec, value);
     for (const [sev, msg] of base) out.push([sev, spec.key, msg]);
     if (!base.length && !isEmpty(value) && !inCatalog(spec, catalog, record, value))
-      out.push([WARNING, spec.key, `${spec.label} '${value}' is not in the list in ${where}`]);
+      out.push([WARNING, spec.key, settings ? `${spec.label} '${value}' is not in the list in ${settings}` : `${spec.label} '${value}' is ${missingHint(spec.source)}`]);
   }
   return out;
 }
@@ -726,7 +886,7 @@ export const canDelete = (n: CNode, idx: TreeIndex) => defOf(n).deletable !== fa
 
 export function childOptions(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): ChildOption[] {
   const def = defOf(n);
-  if (def.childOptions) return def.childOptions(n, idx);
+  if (def.childOptions) return def.childOptions(n, idx, catalog);
   return (def.childTypes ?? []).map((t) => {
     const cd = DEFS[t];
     const exists = cd.singleton !== false && n.children.some((c) => c.type === t);
@@ -760,6 +920,10 @@ export function duplicateNode(n: CNode, parent: CNode): CNode {
     const taken = new Set(parent.children.map((s) => s.params.model));
     c.params.model = uniqueName(`${n.params.model || "Camera_Model"}_copy`, taken);
   }
+  if (n.type === "testerCamera") {
+    const taken = new Set(parent.children.map((s) => s.params.name));
+    c.params.name = uniqueName(`${n.params.name || n.params.cameraModel || "Camera"}_copy`, taken);
+  }
   if (n.type === "vc") {
     const num = nextVcNumber(parent);
     if (num !== null) c.params.virtualChannelNumber = num;
@@ -792,6 +956,10 @@ export function nodeToJson(n: CNode): Json {
     }
     case "modes": case "cameras": case "frames":
       return n.children.map(nodeToJson);
+    case "tester":
+      return { tester: ordered({ ...n.params, modes: n.children.map(nodeToJson) }, def.jsonOrder!) };
+    case "testerMode":
+      return ordered({ ...n.params, cameraModels: n.children.map(nodeToJson) }, def.jsonOrder!);
     case "hardware":
       return [...n.children.map(nodeToJson), ...structuredClone(n.unknown ?? [])];
     case "hwCapture": case "hwPassthrough":
@@ -842,9 +1010,31 @@ export function newDocument(): ConfigDocument {
   return { root: mk("project"), extraTop: {} };
 }
 
+/** An empty tester configuration for the project file `projectFile`. */
+export function newTesterDocument(projectFile: string): ConfigDocument {
+  return { root: mk("tester", { ...DEFS.tester.defaultParams(), project: projectFile }), extraTop: {} };
+}
+
+function testerFromJson(data: Json): ConfigDocument {
+  const params = { ...asDict(data.tester, "tester") };
+  const modes = asList(params.modes, "tester.modes");
+  delete params.modes;
+  const root = mk("tester", params);
+  modes.forEach((m, i) => {
+    const mp = { ...asDict(m, `tester.modes[${i}]`) };
+    const cams = asList(mp.cameraModels, `tester.modes[${i}].cameraModels`);
+    delete mp.cameraModels;
+    root.children.push(mk("testerMode", mp, cams.map((c, j) => mk("testerCamera", asDict(c, `tester.modes[${i}].cameraModels[${j}]`)))));
+  });
+  const extraTop: Json = {};
+  for (const k of Object.keys(data)) if (k !== "tester") extraTop[k] = data[k];
+  return { root, extraTop };
+}
+
 export function documentFromJson(data: Json): ConfigDocument {
   if (data === null || typeof data !== "object" || Array.isArray(data)) throw new LoadError("The top-level JSON value must be an object");
-  if (!("project" in data)) throw new LoadError("Missing root key 'project'");
+  if ("tester" in data && !("project" in data)) return testerFromJson(data);
+  if (!("project" in data)) throw new LoadError("Missing root key 'project' (project configuration) or 'tester' (tester configuration)");
   const params = { ...asDict(data.project, "project") };
   const { projectModes: pm, cameraModels: cms } = params;
   delete params.projectModes; delete params.cameraModels;
@@ -878,7 +1068,7 @@ export const documentToText = (doc: ConfigDocument) => JSON.stringify(documentTo
 export function validateNode(n: CNode, idx: TreeIndex, catalog: Catalog = defaultCatalog()): Issue[] {
   const def = defOf(n);
   const out: Issue[] = [];
-  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, n.params, catalog, (f) => featureEnabled(idx, f)))
+  if (def.fields) for (const [sev, key, msg] of checkFields(def.fields, optionRecord(n, idx), catalog, (f) => featureEnabled(idx, f, catalog)))
     out.push(issue(sev, msg, n, { field: key || undefined }));
   for (const t of def.tables ?? []) out.push(...checkTable(n, t, getPath(n.params, t.key), t.key, catalog));
   if (def.checks) out.push(...def.checks(n, idx));

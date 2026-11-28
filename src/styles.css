@@ -663,3 +663,9 @@ code.wrap { overflow-wrap: anywhere; }
 .file-chip .file-old { color: var(--text-3); text-decoration: line-through; max-width: 160px; flex-shrink: 3; }
 .file-chip span { min-width: 0; }
 .toast span { overflow-wrap: anywhere; }
+.menu-item.open { background: var(--accent-soft); }
+.menu-sub-arrow { color: var(--text-3); flex: none; }
+.modal.pick-project { width: min(520px, calc(100vw - 32px)); }
+.pick-project .sel { width: 100%; margin-top: 6px; }
+.pick-project .form-label { display: block; font-weight: 600; font-size: 12.5px; }
+.pick-when { margin: 6px 0 14px; }

@@ -6,8 +6,8 @@ import {
 } from "../core/model";
 import { delPath, isEmpty, isRequired, kindOf, RANK, setPath, SERIAL_CHANNEL_MAX, type FieldSpec, type Json, type TableSpec } from "../core/schema";
 import type { Recipe } from "../state/store";
-import { cascadeHardware, resolveSpec, type Catalog } from "../core/catalog";
-import { featureEnabled, findChild } from "../core/model";
+import { cascadeHardware, cascadeTesterCamera, resolveSpec, type Catalog } from "../core/catalog";
+import { featureEnabled, findChild, optionRecord } from "../core/model";
 import { FEATURE_EMC } from "../core/schema";
 
 /** Table spec with its catalog-backed columns turned into dropdowns. */
@@ -68,7 +68,13 @@ export function Editor(props: EditorProps) {
       // hardware: a new manufacturer / model narrows the model and IC lists
       if ((node.type === "hwCapture" || node.type === "hwPassthrough") && (spec.key === "manufacture" || spec.key === "model"))
         cascadeHardware(params, props.catalog);
+      // tester camera: another project camera model / manufacturer narrows the device lists
+      if (node.type === "testerCamera" && (spec.key === "cameraModel" || spec.key === "deviceManufacturer"))
+        cascadeTesterCamera(params, props.catalog, idx.ancestor(node, "testerMode")?.params.mode);
     }, `${node.id}:${spec.key}`);
+  const rec = optionRecord(node, idx);
+  const on = (feature: string) => featureEnabled(idx, feature, props.catalog);
+  const plainFields = (def.fields ?? []).filter((f) => !f.requiresFeature && (!f.showIf || on(f.showIf)));
 
   const custom = SECTION_REGISTRY[node.type];
   const opts = childOptions(node, idx, props.catalog);
@@ -95,17 +101,17 @@ export function Editor(props: EditorProps) {
 
         <Banner issues={issues} />
 
-        {def.fields && def.fields.some((f) => !f.requiresFeature) && (
+        {plainFields.length > 0 && (
           <section className="card">
             <h3 className="card-title">Parameters</h3>
-            <FieldForm nodeId={node.id} fields={def.fields.filter((f) => !f.requiresFeature).map((f) => resolveSpec(f, props.catalog, node.params))}
+            <FieldForm nodeId={node.id} fields={plainFields.map((f) => resolveSpec(f, props.catalog, rec))}
               params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
         {[...new Set((def.fields ?? []).map((f) => f.requiresFeature).filter((f): f is string => !!f))].map((feature) => (
-          <FeatureSection key={feature} feature={feature} on={featureEnabled(idx, feature)} idx={idx} onSelect={onSelect}>
-            <FieldForm nodeId={node.id} fields={def.fields!.filter((f) => f.requiresFeature === feature).map((f) => resolveSpec(f, props.catalog, node.params))}
-              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} disabled={!featureEnabled(idx, feature)} />
+          <FeatureSection key={feature} feature={feature} on={on(feature)} idx={idx} onSelect={onSelect}>
+            <FieldForm nodeId={node.id} fields={def.fields!.filter((f) => f.requiresFeature === feature).map((f) => resolveSpec(f, props.catalog, rec))}
+              params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} disabled={!on(feature)} />
           </FeatureSection>
         ))}
 

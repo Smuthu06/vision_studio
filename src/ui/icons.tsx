@@ -107,6 +107,28 @@ const ART: Record<IconName, Art> = {
       <path d="M9.6 0.5 L2.5 9.2 H7 L5.2 15.5 L13.5 6 H9 L11.8 0.5 Z" fill={`url(#${id("bolt")})`} stroke="#9a6200" strokeLinejoin="round" />
     ),
   },
+  /* Test bench: PXIe chassis with module slots */
+  tester: {
+    defs: (id) => lg(id("rack"), "#7d8a99", "#46525f"),
+    body: (id) => (<>
+      <rect x="0.5" y="2.5" width="15" height="11" rx="1.3" fill={`url(#${id("rack")})`} stroke="#2a323b" />
+      {[2.2, 5, 7.8, 10.6].map((x, i) => (
+        <g key={x}>
+          <rect x={x} y="4" width="2.2" height="8" rx="0.4" fill="#1f262d" />
+          <circle cx={x + 1.1} cy="5.3" r="0.55" fill={i === 0 ? "#57d163" : "#f2b233"} />
+        </g>))}
+      <rect x="13.2" y="4" width="1.2" height="8" rx="0.3" fill="#c9d2dc" />
+    </>),
+  },
+  testerMode: { body: () => syncArrows("#7a3fb8", "var(--icon-ink, #3a4a5e)") },
+  testerCamera: {
+    defs: (id) => (<>{camDefs(id)}{lg(id("chip"), "#4f97ea", "#1c5fb8")}</>),
+    body: (id) => (<>
+      {videoCam(id, 0, -1.5)}
+      <rect x="8.5" y="9.5" width="7" height="6" rx="1" fill={`url(#${id("chip")})`} stroke="#164a8c" />
+      <rect x="10.3" y="11.1" width="3.4" height="2.8" rx="0.4" fill="none" stroke="#fff" strokeWidth="0.9" />
+    </>),
+  },
   /* Telemetry gauge */
   gauge: {
     body: () => (<>

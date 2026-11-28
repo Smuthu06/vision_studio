@@ -11,3 +11,10 @@ export function projectFileName(params: Record<string, unknown>): string {
   const version = clean(String(params.version ?? "").replace(/^v\.?\s*/i, ""));
   return `${project}${version ? `_v${version}` : ""}.json`;
 }
+
+/** File name of any configuration: projects by project name, testers by tester name. */
+export function configFileName(root: { type: string; params: Record<string, unknown> }): string {
+  return root.type === "tester"
+    ? projectFileName({ project: root.params.testerName, version: root.params.version })
+    : projectFileName(root.params);
+}

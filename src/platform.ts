@@ -243,21 +243,24 @@ export async function saveUiConfig(state: UiConfigState, text: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Project folder – File › Save writes <project>_v<version>.json there
-//   desktop: [app] project_dir of the INI, written by the native app
-//   server:  web mode – listed/opened by any browser, saved only from this PC
+// Bench folders (INI [app] *_dir):
+//   project / tester: configurations – File › Save writes <name>_v<version>.json there
+//   bitfile / datalogger: listed for the tester's Bit File / Datalogger dropdowns
+//   desktop: the native app reads and writes them; server: web mode (local API);
 //   browser: no backend (dev server, static hosting) – Save downloads the file
 // ---------------------------------------------------------------------------
+export type FolderKind = "project" | "tester" | "bitfile" | "datalogger";
 export interface ProjectEntry { name: string; modified: number | null; size: number }
 export interface ProjectListing {
   backend: "desktop" | "server";
+  kind: FolderKind;
   dir: string;
   files: ProjectEntry[];
   canSave: boolean;
   error: string | null;
 }
-/** Handle of a document that lives in the project folder. */
-export interface ProjectHandle { project: string }
+/** Handle of a document that lives in a configuration folder. */
+export interface ProjectHandle { project: string; kind?: FolderKind }
 export const isProjectHandle = (h: unknown): h is ProjectHandle =>
   !!h && typeof h === "object" && typeof (h as ProjectHandle).project === "string";
 
@@ -269,28 +272,31 @@ const toError = (e: unknown) => {
   return new ProjectFileError(x?.kind ?? "io", x?.message ?? String(e));
 };
 
-/** The project folder, or null when there is no backend (plain browser). */
-export async function listProjects(): Promise<ProjectListing | null> {
+/** A bench folder, or null when there is no backend (plain browser). */
+export async function listFolder(kind: FolderKind): Promise<ProjectListing | null> {
   if (isDesktop) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return { backend: "desktop", ...(await invoke<Omit<ProjectListing, "backend">>("projects_list")) };
+    try {
+      return { backend: "desktop", kind, ...(await invoke<Omit<ProjectListing, "backend" | "kind">>("files_list", { kind })) };
+    } catch (e) { throw toError(e); }
   }
   try {
-    const r = await fetch("api/projects", { cache: "no-store" });
+    const r = await fetch(`api/files/${kind}`, { cache: "no-store" });
     if (r.ok && (r.headers.get("content-type") ?? "").includes("application/json")) {
       const l = await r.json();
-      if (l && typeof l.dir === "string" && Array.isArray(l.files)) return { backend: "server", ...l };
+      if (l && typeof l.dir === "string" && Array.isArray(l.files)) return { backend: "server", kind, ...l };
     }
   } catch { /* no backend */ }
   return null;
 }
+export const listProjects = () => listFolder("project");
 
 export async function readProject(listing: ProjectListing, name: string): Promise<string> {
   if (listing.backend === "desktop") {
     const { invoke } = await import("@tauri-apps/api/core");
-    try { return await invoke<string>("project_read", { name }); } catch (e) { throw toError(e); }
+    try { return await invoke<string>("file_read", { kind: listing.kind, name }); } catch (e) { throw toError(e); }
   }
-  const r = await fetch(`api/projects/${encodeURIComponent(name)}`, { cache: "no-store" });
+  const r = await fetch(`api/files/${listing.kind}/${encodeURIComponent(name)}`, { cache: "no-store" });
   if (r.ok) return r.text();
   throw toError(await r.json().catch(() => ({ message: `HTTP ${r.status}` })));
 }
@@ -299,9 +305,9 @@ export async function readProject(listing: ProjectListing, name: string): Promis
 export async function saveProject(listing: ProjectListing, name: string, text: string, overwrite: boolean): Promise<{ name: string; path: string }> {
   if (listing.backend === "desktop") {
     const { invoke } = await import("@tauri-apps/api/core");
-    try { return await invoke("project_save", { name, text, overwrite }); } catch (e) { throw toError(e); }
+    try { return await invoke("file_save", { kind: listing.kind, name, text, overwrite }); } catch (e) { throw toError(e); }
   }
-  const r = await fetch(`api/projects/${encodeURIComponent(name)}${overwrite ? "?overwrite=1" : ""}`, {
+  const r = await fetch(`api/files/${listing.kind}/${encodeURIComponent(name)}${overwrite ? "?overwrite=1" : ""}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", "X-Vision-Studio": "1" },
     body: JSON.stringify({ text }),

@@ -169,6 +169,7 @@ echo    Program : %CD%\%OUT%\VisionStudio.exe
 echo    Settings: %CD%\%OUT%\VisionStudio.ini   ^(mode = desktop ^| web^)
 echo    Lists   : %CD%\%OUT%\ui_config.json    ^(edited in File ^> Settings^)
 echo    Saves to: project_dir in VisionStudio.ini   ^(default ..\..\configurations\project_configuration^)
+echo    Testers : tester_dir, bitfile_dir, datalogger_dir in VisionStudio.ini
 if exist "release\VisionStudio-portable.zip" echo    Portable: %CD%\release\VisionStudio-portable.zip
 echo.
 echo  Edit VisionStudio.ini and set  mode = web  to use Vision Studio in a browser.

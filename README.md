@@ -83,7 +83,10 @@ The exe reads `VisionStudio.ini` from its own folder (template: `config/vision-s
 [app]
 mode = desktop        ; desktop = own window, web = serve the editor to a browser
 ui_config = ui_config.json   ; dropdown lists (File › Settings), may be a network path
-project_dir = ../../configurations/project_configuration   ; where Save writes the configurations
+project_dir = ../../configurations/project_configuration   ; where Save writes project configurations
+tester_dir = ../../configurations/tester_configuration     ; where Save writes tester configurations
+bitfile_dir = ../../fpga_bitfile                           ; *.lvbitx offered as Bit File (read only)
+datalogger_dir = ../../datalogger_configuration            ; *.json offered as Datalogger Configuration (read only)
 
 [desktop]
 width = 1440
@@ -111,6 +114,62 @@ open_browser = true
   change.
 * The installer (`installer` option) installs per user and puts `vision-studio.ini` next
   to the program, so it can be edited without admin rights.
+
+### Tester configuration
+
+A second kind of configuration describes the test bench used for a project. **File › New** and
+**File › Open** each have a *Project* and a *Tester* entry.
+
+1. **File › New › Tester** asks for the project configuration first: a dropdown lists the JSON
+   files in the project folder. *Cancel* ends the request and leaves the open document as it is.
+2. The new tester has one node. Fill in Tester Name, Version, Author and Email Address. The
+   project you chose is shown as *Project Configuration* and can be changed later.
+3. **Right-click the tester › Add Mode.** The *Mode* dropdown lists the modes of the selected
+   project, and each mode can be added once. *Multiple Display* appears only when the project
+   enables EMCfeature.
+4. **Right-click a mode › Add Camera Model.** Its inputs:
+
+| Input | Values from |
+| --- | --- |
+| Camera Model | camera models of the project |
+| Camera Model Name | free text; shown in the tree |
+| Device Manufacturer | the project's hardware for that camera model in this mode (CaptureMode → Capture Hardware, PassthroughMode → Passthrough Hardware) |
+| Device Model | the same hardware, for the chosen manufacturer |
+| FPGA Device | Settings › FPGA devices (`ui_config.json`) |
+| Device Resources | free text, e.g. `RIO0` |
+| Bit File | `*.lvbitx` in `bitfile_dir` |
+| Datalogger Configuration | `*.json` in `datalogger_dir` (optional) |
+| FPGA Board Defaults | Settings › FPGA board defaults (`ui_config.json`) |
+
+   Below the inputs, a **Channels** table holds the channels (SI0–SI7, SO0–SO7) and their names.
+   Each channel can be used once per camera model.
+
+The lists from the project and the folders are re-read when the window gets focus, so files
+copied in while Vision Studio is open show up. A value that is no longer offered is reported,
+for example "Bit File '…' is not found in the fpga_bitfile folder". A bit file built for
+another device than the FPGA Device (`…_NI1486_…` with PXIe-1487) gives a warning.
+
+**Save** writes `<Tester Name>_v<version>.json` into `tester_dir`, following the same rules as
+projects. The file looks like this:
+
+```json
+{
+  "tester": {
+    "testerName": "HIL_Bench", "version": "V.1.0.0", "author": "engineer", "emailAddress": "engineer@company.com",
+    "project": "sample_v1.0.0.json",
+    "modes": [{
+      "mode": "CaptureMode", "multipleDisplay": true,
+      "cameraModels": [{
+        "cameraModel": "ADAS_Camera_Model_A", "name": "Front_Left",
+        "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487", "fpgaDevice": "PXIe-1487",
+        "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
+        "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "Default",
+        "channels": [{ "channel": "SI0", "name": "Front" }, { "channel": "SO1", "name": "ECU" }]
+      }]
+    }]
+  }
+}
+```
 
 ### Saving and opening: the project folder
 

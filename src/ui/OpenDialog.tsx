@@ -9,11 +9,12 @@ interface Props {
   onOpen: (name: string) => void;
   onBrowse: () => void;
   onClose: () => void;
+  title?: string;
 }
 
 const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "");
 
-export function OpenDialog({ listing, current, onOpen, onBrowse, onClose }: Props) {
+export function OpenDialog({ listing, current, onOpen, onBrowse, onClose, title = "Open configuration" }: Props) {
   const [filter, setFilter] = useState("");
   const files = useMemo(() => {
     const f = filter.trim().toLowerCase();
@@ -38,8 +39,8 @@ export function OpenDialog({ listing, current, onOpen, onBrowse, onClose }: Prop
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal open-dialog" role="dialog" aria-modal="true" aria-label="Open configuration" onKeyDown={key}>
-        <h3>Open configuration</h3>
+      <div className="modal open-dialog" role="dialog" aria-modal="true" aria-label={title} onKeyDown={key}>
+        <h3>{title}</h3>
         <div className="open-dir" title={listing.dir}><Icon name="folder" size={14} /><code>{listing.dir}</code></div>
         {listing.error && <div className="open-error">{listing.error}</div>}
         <input className="inp open-filter" placeholder="Filter by name…" value={filter} autoFocus

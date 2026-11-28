@@ -1,7 +1,13 @@
-//! The project folder: every configuration is saved here as
-//! `<project>_v<version>.json` (the UI derives the name, see projectFileName).
+//! The bench folders Vision Studio works with (all set in the INI):
 //!
-//! Only plain file names inside the folder are accepted, so the API can never
+//! | kind         | INI key          | files     | written by Vision Studio |
+//! |--------------|------------------|-----------|--------------------------|
+//! | `project`    | `project_dir`    | `*.json`  | yes – `<project>_v<version>.json` |
+//! | `tester`     | `tester_dir`     | `*.json`  | yes – `<tester>_v<version>.json`  |
+//! | `bitfile`    | `bitfile_dir`    | `*.lvbitx`| no (listed for the Bit File dropdown) |
+//! | `datalogger` | `datalogger_dir` | `*.json`  | no (listed for the Datalogger dropdown) |
+//!
+//! Only plain file names inside a folder are accepted, so the API can never
 //! read or write anywhere else. Writes are atomic, and an existing file is
 //! replaced only when the caller says so (after asking the user).
 
@@ -58,7 +64,29 @@ impl FileError {
 
 pub struct ProjectDir {
     dir: PathBuf,
+    ext: &'static str,
+    writable: bool,
     lock: Mutex<()>,
+}
+
+/// All folders by kind (see the module docs).
+pub struct Folders {
+    pub project: ProjectDir,
+    pub tester: ProjectDir,
+    pub bitfile: ProjectDir,
+    pub datalogger: ProjectDir,
+}
+
+impl Folders {
+    pub fn get(&self, kind: &str) -> Result<&ProjectDir, FileError> {
+        match kind {
+            "project" => Ok(&self.project),
+            "tester" => Ok(&self.tester),
+            "bitfile" => Ok(&self.bitfile),
+            "datalogger" => Ok(&self.datalogger),
+            _ => Err(FileError::new("invalid", format!("Unknown folder '{kind}'"))),
+        }
+    }
 }
 
 fn mtime_ms(path: &Path) -> Option<u64> {
@@ -67,12 +95,18 @@ fn mtime_ms(path: &Path) -> Option<u64> {
 }
 
 /// A plain `*.json` file name: no folders, no `..`, no characters Windows rejects.
+#[cfg(test)]
 pub fn valid_name(name: &str) -> bool {
+    valid_name_ext(name, ".json")
+}
+
+/// A plain file name with extension `ext` (lower case, with the dot).
+pub fn valid_name_ext(name: &str, ext: &str) -> bool {
     let bad = |c: char| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control();
     !name.is_empty()
         && name.len() <= 200
-        && name.to_ascii_lowercase().ends_with(".json")
-        && name.len() > 5
+        && name.to_ascii_lowercase().ends_with(ext)
+        && name.len() > ext.len()
         && !name.starts_with('.')
         && !name.chars().any(bad)
         && !name.ends_with(' ')
@@ -96,8 +130,14 @@ fn normalize(p: &Path) -> PathBuf {
 }
 
 impl ProjectDir {
+    /// A folder of JSON configurations that Vision Studio saves into.
     pub fn new(dir: PathBuf) -> Self {
-        ProjectDir { dir: normalize(&dir), lock: Mutex::new(()) }
+        ProjectDir { dir: normalize(&dir), ext: ".json", writable: true, lock: Mutex::new(()) }
+    }
+
+    /// A folder that is only listed (bit files, datalogger configurations).
+    pub fn read_only(dir: PathBuf, ext: &'static str) -> Self {
+        ProjectDir { dir: normalize(&dir), ext, writable: false, lock: Mutex::new(()) }
     }
 
     pub fn dir(&self) -> &Path {
@@ -105,7 +145,7 @@ impl ProjectDir {
     }
 
     fn file(&self, name: &str) -> Result<PathBuf, FileError> {
-        if valid_name(name) { Ok(self.dir.join(name)) } else { Err(FileError::new("invalid", format!("'{name}' is not a valid file name"))) }
+        if valid_name_ext(name, self.ext) { Ok(self.dir.join(name)) } else { Err(FileError::new("invalid", format!("'{name}' is not a valid file name"))) }
     }
 
     pub fn list(&self, can_save: bool) -> Listing {
@@ -116,7 +156,7 @@ impl ProjectDir {
                 for e in rd.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
                     let Ok(meta) = e.metadata() else { continue };
-                    if meta.is_file() && valid_name(&name) {
+                    if meta.is_file() && valid_name_ext(&name, self.ext) {
                         files.push(Entry { modified: mtime_ms(&e.path()), size: meta.len(), name });
                     }
                 }
@@ -126,7 +166,7 @@ impl ProjectDir {
             Err(e) => Some(format!("Could not read {dir}: {e}")),
         };
         files.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name.cmp(&b.name)));
-        Listing { dir, files, can_save, error }
+        Listing { dir, files, can_save: can_save && self.writable, error }
     }
 
     pub fn read(&self, name: &str) -> Result<String, FileError> {
@@ -143,6 +183,9 @@ impl ProjectDir {
     /// Write `name`. Fails with kind "exists" if the file is there and `overwrite` is false.
     pub fn save(&self, name: &str, text: &str, overwrite: bool) -> Result<Saved, FileError> {
         let _guard = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        if !self.writable {
+            return Err(FileError::new("forbidden", format!("{} is read-only for Vision Studio", self.dir.display())));
+        }
         let path = self.file(name)?;
         if text.len() > MAX_BYTES {
             return Err(FileError::new("invalid", "The configuration is too large to save"));
@@ -173,6 +216,21 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         let dir = base.join("bin/x/../../configurations/project_configuration");
         (ProjectDir::new(dir), base)
+    }
+
+    #[test]
+    fn read_only_folders_list_their_extension_and_refuse_writes() {
+        let (_, base) = temp("ro");
+        let dir = base.join("fpga_bitfile");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("FPGA_8IN_NI1486_capture_v10.0.0.lvbitx"), "x").unwrap();
+        fs::write(dir.join("notes.json"), "{}").unwrap();
+        let f = ProjectDir::read_only(dir, ".lvbitx");
+        let l = f.list(true);
+        assert!(!l.can_save);
+        assert_eq!(l.files.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["FPGA_8IN_NI1486_capture_v10.0.0.lvbitx"]);
+        assert_eq!(f.save("x.lvbitx", "{}", true).unwrap_err().kind, "forbidden");
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]

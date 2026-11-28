@@ -1,7 +1,7 @@
 //! Web mode: serves the UI that is embedded in the executable over plain HTTP,
 //! so any browser can use Vision Studio. No files are read from disk.
 
-use crate::projects::{FileError, ProjectDir};
+use crate::projects::{FileError, Folders};
 use crate::ui_config::{SaveError, Store, MAX_BYTES};
 use std::io::Read;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 /// Start the server on a background thread. Returns an error message if the
 /// address cannot be bound (e.g. the port is already in use).
-pub fn serve<R: Runtime>(app: AppHandle<R>, host: &str, port: u16, store: Arc<Store>, projects: Arc<ProjectDir>) -> Result<(), String> {
+pub fn serve<R: Runtime>(app: AppHandle<R>, host: &str, port: u16, store: Arc<Store>, folders: Arc<Folders>) -> Result<(), String> {
     let addr = if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
     let server = Server::http(&addr).map_err(|e| format!("Could not start the web server on {addr}: {e}"))?;
     thread::Builder::new()
@@ -21,8 +21,9 @@ pub fn serve<R: Runtime>(app: AppHandle<R>, host: &str, port: u16, store: Arc<St
                 let path = request.url().split('?').next().unwrap_or("").to_string();
                 if path == "/api/ui-config" {
                     handle_ui_config(&store, request);
-                } else if path == "/api/projects" || path.starts_with("/api/projects/") {
-                    handle_projects(&projects, &path, request);
+                } else if let Some(rest) = path.strip_prefix("/api/files/") {
+                    let rest = rest.to_string();
+                    handle_files(&folders, &rest, request);
                 } else {
                     handle(&app, request);
                 }
@@ -115,16 +116,24 @@ pub fn decode_segment(seg: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// GET /api/projects                → folder listing (anyone who can open the editor)
-/// GET /api/projects/<name>         → file text
-/// PUT /api/projects/<name>?overwrite=1  {text}  → save (only this PC)
-fn handle_projects(projects: &ProjectDir, path: &str, mut request: Request) {
+/// GET /api/files/<kind>                → folder listing (kind: project, tester, bitfile, datalogger)
+/// GET /api/files/<kind>/<name>         → file text
+/// PUT /api/files/<kind>/<name>?overwrite=1  {text}  → save (only this PC; project / tester)
+fn handle_files(folders: &Folders, rest: &str, request: Request) {
+    let (kind, name) = match rest.split_once('/') { Some((k, n)) => (k, Some(n)), None => (rest, None) };
+    match folders.get(kind) {
+        Ok(dir) => handle_folder(dir, name, request),
+        Err(e) => { let _ = request.respond(json_response(404, &e)); }
+    }
+}
+
+fn handle_folder(projects: &crate::projects::ProjectDir, name: Option<&str>, mut request: Request) {
     let peer_loopback = request.remote_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
     let host = request.headers().iter().find(|h| h.field.equiv("Host")).map(|h| h.value.as_str().to_string());
     let local = is_local(peer_loopback, host.as_deref());
     let err = |status: u16, e: FileError| json_response(status, &e);
     let status_of = |e: &FileError| match e.kind.as_str() { "exists" => 409, "invalid" => 400, "notFound" => 404, "forbidden" => 403, _ => 500 };
-    let name = path.strip_prefix("/api/projects/").map(decode_segment);
+    let name = name.map(decode_segment);
     let overwrite = request.url().split_once('?').map(|(_, q)| q.split('&').any(|kv| kv == "overwrite=1")).unwrap_or(false);
     let response = match (request.method().clone(), name) {
         (Method::Get | Method::Head, None) => json_response(200, &projects.list(local)),
