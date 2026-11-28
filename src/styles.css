@@ -695,3 +695,33 @@ code.wrap { overflow-wrap: anywhere; }
 .route-head { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
 .bench-note { display: flex; gap: 6px; align-items: center; margin: 0; }
 @media (max-width: 1100px) { .bench-columns, .bench-formats { grid-template-columns: 1fr; } }
+
+/* ---- Settings › Debayer configurations › Show help ---- */
+.bench-columns.with-help { grid-template-columns: minmax(170px, 200px) minmax(0, 1fr) minmax(280px, 330px); }
+.bench-columns.with-help .bench-formats, .bench-columns.with-help .bench-grid { grid-template-columns: 1fr; }
+.bench-form-head { display: flex; align-items: center; gap: 8px; margin-bottom: -4px; }
+.bench-form-head .btn.on { background: var(--sel); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
+.debayer-help { position: sticky; top: 0; max-height: calc(100vh - 260px); overflow: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-panel); padding: 0 12px 12px; font-size: 12.5px; line-height: 1.45; }
+.debayer-help .help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 10px 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.help-sec { padding: 8px 8px 10px; border-radius: 8px; border-left: 3px solid transparent; margin: 0 -4px; }
+.help-sec.on { background: var(--sel); border-left-color: var(--accent); }
+.help-sec h4 { margin: 0 0 4px; font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.help-sec p { margin: 4px 0; }
+.help-sec ul { margin: 4px 0; padding-left: 18px; }
+.help-ini { font-size: 10.5px; font-weight: 400; color: var(--text-3); }
+.help-values { border-collapse: collapse; width: 100%; margin: 4px 0; }
+.help-values td { padding: 2px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.help-values td.num { width: 18px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+.help-values td code { font-size: 11.5px; word-break: break-word; }
+.help-values td.cur { width: 1%; white-space: nowrap; color: var(--accent); font-size: 11px; }
+.help-values td.cur svg { vertical-align: -2px; margin-right: 2px; }
+.help-values tr.on td { font-weight: 600; }
+.help-sub { margin-top: 6px; }
+.help-subtitle { font-weight: 600; font-size: 12px; margin: 6px 0 2px; }
+.help-sub details { margin: 2px 0 4px; }
+.help-sub summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
+.help-note { display: flex; gap: 6px; align-items: flex-start; color: var(--text-2); }
+.help-note svg { flex: none; margin-top: 2px; }
+@media (max-width: 1100px) { .bench-columns.with-help { grid-template-columns: 1fr; } .debayer-help { position: static; max-height: none; } }
+.bench-columns > .bench-list { position: sticky; top: 0; }

@@ -9,6 +9,7 @@ import {
   type BoardDefaults, type DebayerConfig, type ImageFormat, type PixelFormat,
 } from "../core/benchDefaults";
 import { Icon } from "./icons";
+import { DebayerHelp, type HelpId } from "./DebayerHelp";
 
 let seq = 0;
 const nid = () => `b${++seq}`;
@@ -121,9 +122,9 @@ function EntryList<T extends { id: string; orig?: string }>({ title, items, name
   );
 }
 
-function F({ label, help, err, warn, children, wide }: { label: string; help?: string; err?: string; warn?: string; children: React.ReactNode; wide?: boolean }) {
+function F({ label, help, err, warn, children, wide, helpId }: { label: string; help?: string; err?: string; warn?: string; children: React.ReactNode; wide?: boolean; helpId?: HelpId }) {
   return (
-    <label className={`bench-field ${wide ? "wide" : ""}`}>
+    <label className={`bench-field ${wide ? "wide" : ""}`} data-help={helpId}>
       <span className="bench-label">{label}</span>
       {children}
       {err ? <span className="row-err">{err}</span> : warn ? <span className="row-warn">{warn}</span> : help ? <span className="bench-help">{help}</span> : null}
@@ -205,6 +206,7 @@ export function BoardEditor({ boards, onChange, errors, usageOf }: {
 }
 
 // ---------------------------------------------------------------------------- debayer configurations
+const HELP_KEY = "vision-studio.debayerHelp";
 const DATA_SIZE_LABEL: Record<number, string> = { 1: "1 – uint8", 2: "2 – uint16", 4: "4 – uint32" };
 
 function FormatEditor({ side, f, onChange, errors, warnings, prefix }: {
@@ -217,7 +219,7 @@ function FormatEditor({ side, f, onChange, errors, warnings, prefix }: {
   return (
     <fieldset className="bench-group">
       <legend>{title}</legend>
-      <F label="Image Format" help="RAW, RGB or YUV" err={e("imageFormat")}>
+      <F label="Image Format" help="RAW, RGB or YUV" err={e("imageFormat")} helpId="imageFormat">
         <select className="inp sel" value={f.imageFormat} aria-label={`${title} image format`}
           onChange={(ev) => {
             const fmt = ev.target.value as ImageFormat;
@@ -227,24 +229,24 @@ function FormatEditor({ side, f, onChange, errors, warnings, prefix }: {
           {IMAGE_FORMATS.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
       </F>
-      <F label="Image Format Parameter" help={f.imageFormat === "IMAGE_FORMAT_RAW" ? "Bayer mask" : f.imageFormat === "IMAGE_FORMAT_RGB" ? "Channel order" : "YUV layout"} err={e("formatParameter")}>
+      <F label="Image Format Parameter" help={f.imageFormat === "IMAGE_FORMAT_RAW" ? "Bayer mask" : f.imageFormat === "IMAGE_FORMAT_RGB" ? "Channel order" : "YUV layout"} err={e("formatParameter")} helpId="formatParameter">
         <select className="inp sel" value={f.formatParameter} aria-label={`${title} image format parameter`}
           onChange={(ev) => onChange({ ...f, formatParameter: Number(ev.target.value) })}>
           {params.map((p, i) => <option key={p} value={i}>{i} – {p}</option>)}
           {f.formatParameter >= params.length && <option value={f.formatParameter}>{f.formatParameter} – (invalid)</option>}
         </select>
       </F>
-      <F label="Data Size" help="Bytes per image array element (RAW 1/2/4, YUV and RGB 1)" err={e("dataSize")} warn={w("dataSize")}>
+      <F label="Data Size" help="Bytes per image array element (RAW 1/2/4, YUV and RGB 1)" err={e("dataSize")} warn={w("dataSize")} helpId="dataSize">
         <select className="inp sel" value={f.dataSize} aria-label={`${title} data size`} onChange={(ev) => onChange({ ...f, dataSize: Number(ev.target.value) })}>
           {DATA_SIZES.map((x) => <option key={x} value={x}>{DATA_SIZE_LABEL[x]}</option>)}
           {!(DATA_SIZES as readonly number[]).includes(f.dataSize) && <option value={f.dataSize}>{f.dataSize} (invalid)</option>}
         </select>
       </F>
-      <F label="Bit Depth Per Channel" help={`Bits holding the intensity value, at most ${f.dataSize * 8}`} err={e("bitDepthPerChannel")}>
+      <F label="Bit Depth Per Channel" help={`Bits holding the intensity value, at most ${f.dataSize * 8}`} err={e("bitDepthPerChannel")} helpId="bitDepth">
         <input className={`inp num ${e("bitDepthPerChannel") ? "has-error" : ""}`} inputMode="numeric" value={f.bitDepthPerChannel}
           aria-label={`${title} bit depth per channel`} onChange={(ev) => onChange({ ...f, bitDepthPerChannel: ev.target.value })} />
       </F>
-      <F label="Use Big Endian" err={e("useBigEndian")}>
+      <F label="Use Big Endian" err={e("useBigEndian")} helpId="endian">
         <select className="inp sel" value={f.useBigEndian} aria-label={`${title} byte order`} onChange={(ev) => onChange({ ...f, useBigEndian: Number(ev.target.value) })}>
           <option value={0}>0 – Little Endian</option>
           <option value={1}>1 – Big Endian</option>
@@ -260,6 +262,14 @@ export function DebayerEditor({ configs, onChange, errors, warnings, usageOf }: 
   const [selId, setSelId] = useState<string | undefined>(configs[0]?.id);
   const d = configs.find((x) => x.id === selId) ?? configs[0];
   const set = (patch: Partial<DDebayer>) => d && onChange(configs.map((x) => (x.id === d.id ? { ...x, ...patch } : x)));
+  const [showHelp, setShowHelpState] = useState(() => { try { return localStorage.getItem(HELP_KEY) === "1"; } catch { return false; } });
+  const setShowHelp = (on: boolean) => { setShowHelpState(on); try { localStorage.setItem(HELP_KEY, on ? "1" : "0"); } catch { /* ignore */ } };
+  const [helpAt, setHelpAt] = useState<HelpId>("overview");
+  // the input being edited decides which help section is highlighted
+  const track = (e: React.SyntheticEvent) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-help]")?.dataset.help as HelpId | undefined;
+    if (id) setHelpAt(id);
+  };
   const add = (from?: DDebayer) => {
     const name = uniqueName(from ? `${from.name}_copy` : "Debayer", configs.map((x) => x.name));
     const nd = from ? { ...from, id: nid(), orig: undefined, name, input: { ...from.input }, output: { ...from.output } } : debayerToDraft(defaultDebayer(name), false);
@@ -268,23 +278,30 @@ export function DebayerEditor({ configs, onChange, errors, warnings, usageOf }: 
   };
   const short = (f: DFmt) => f.imageFormat.replace("IMAGE_FORMAT_", "");
   return (
-    <div className="bench-columns">
+    <div className={`bench-columns ${showHelp ? "with-help" : ""}`}>
       <EntryList title="Configurations" items={configs} nameOf={(x) => x.name} selected={d?.id} onSelect={setSelId} errors={errors} usageOf={usageOf}
         subOf={(x) => `${x.imageWidth}×${x.imageHeight} · ${short(x.input)} → ${short(x.output)}`} addLabel="Add configuration"
         onAdd={() => add()} onDuplicate={add} onRemove={(id) => onChange(configs.filter((x) => x.id !== id))} />
       {d ? (
-        <div className="bench-form">
+        <div className="bench-form" onFocusCapture={track} onMouseDownCapture={track}>
+          <div className="bench-form-head">
+            <b>{d.name.trim() || "(no name)"}</b><span className="spacer" />
+            <button type="button" className={`btn btn-sm ${showHelp ? "on" : ""}`} aria-pressed={showHelp} onClick={() => setShowHelp(!showHelp)}
+              title="Explanation of every debayer setting, from the debayer documentation">
+              <Icon name="help" size={14} />{showHelp ? "Hide help" : "Show help"}
+            </button>
+          </div>
           <div className="bench-grid">
-            <F label="Name" err={errors.get(d.id)} help="Chosen in Virtual Channel › Debayer Configuration">
+            <F label="Name" err={errors.get(d.id)} help="Chosen in Virtual Channel › Debayer Configuration" helpId="overview">
               <input className={`inp ${errors.get(d.id) ? "has-error" : ""}`} value={d.name} spellCheck={false} aria-label="Debayer name" onChange={(e) => set({ name: e.target.value })} />
             </F>
             <F label="Description (optional)">
               <input className="inp" value={d.description} placeholder="—" aria-label="Debayer description" onChange={(e) => set({ description: e.target.value })} />
             </F>
-            <F label="Image Width" err={errors.get(`${d.id}.imageWidth`)}>
+            <F label="Image Width" err={errors.get(`${d.id}.imageWidth`)} helpId="size">
               <input className={`inp num ${errors.get(`${d.id}.imageWidth`) ? "has-error" : ""}`} inputMode="numeric" value={d.imageWidth} aria-label="Image Width" onChange={(e) => set({ imageWidth: e.target.value })} />
             </F>
-            <F label="Image Height" err={errors.get(`${d.id}.imageHeight`)}>
+            <F label="Image Height" err={errors.get(`${d.id}.imageHeight`)} helpId="size">
               <input className={`inp num ${errors.get(`${d.id}.imageHeight`) ? "has-error" : ""}`} inputMode="numeric" value={d.imageHeight} aria-label="Image Height" onChange={(e) => set({ imageHeight: e.target.value })} />
             </F>
           </div>
@@ -293,22 +310,22 @@ export function DebayerEditor({ configs, onChange, errors, warnings, usageOf }: 
             <FormatEditor side="output" f={d.output} onChange={(f) => set({ output: f })} errors={errors} warnings={warnings} prefix={`${d.id}.output`} />
           </div>
           <div className="bench-grid">
-            <F label="Conversion Parameter" help="Colour conversion (Conv_Param_1)">
+            <F label="Conversion Parameter" help="Colour conversion (Conv_Param_1)" helpId="conversion">
               <select className="inp sel" value={d.conversionParameter} aria-label="Conversion Parameter" onChange={(e) => set({ conversionParameter: Number(e.target.value) })}>
                 {CONVERSION_PARAMETERS.map((p, i) => <option key={p} value={i}>{i} – {p}</option>)}
               </select>
             </F>
-            <F label="Image Type" help="Image type for the IMAQ reference">
+            <F label="Image Type" help="Image type for the IMAQ reference" helpId="imageType">
               <select className="inp sel" value={d.imageType} aria-label="Image Type" onChange={(e) => set({ imageType: Number(e.target.value) })}>
                 {IMAGE_TYPES.map((p, i) => <option key={p} value={i}>{i} – {p}</option>)}
               </select>
             </F>
-            <F label="Device Preferred" help="Device that runs the conversion">
+            <F label="Device Preferred" help="Device that runs the conversion" helpId="devices">
               <select className="inp sel" value={d.devicePreferred} aria-label="Device Preferred" onChange={(e) => set({ devicePreferred: e.target.value })}>
                 {DEVICE_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </F>
-            <F label="Device Alternative" help="Used when the preferred device is not available">
+            <F label="Device Alternative" help="Used when the preferred device is not available" helpId="devices">
               <select className="inp sel" value={d.deviceAlternative} aria-label="Device Alternative" onChange={(e) => set({ deviceAlternative: e.target.value })}>
                 {DEVICE_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -317,6 +334,7 @@ export function DebayerEditor({ configs, onChange, errors, warnings, usageOf }: 
           <p className="muted small bench-note"><Icon name="info" size={12} /> GPU conversion needs the matching drivers on the bench PC (see the x2rgbApp notes in the debayer documentation).</p>
         </div>
       ) : <div className="muted small list-empty">Add a debayer configuration.</div>}
+      {showHelp && <DebayerHelp d={d} active={helpAt} onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
