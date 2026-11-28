@@ -106,7 +106,7 @@ kbd {
 .tb-danger:hover:not(:disabled) { color: var(--err); }
 .file-chip {
   display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 99px; background: var(--bg-hover);
-  color: var(--text-2); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;
+  color: var(--text-2); max-width: 440px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;
 }
 .file-chip span { overflow: hidden; text-overflow: ellipsis; }
 .dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
@@ -645,3 +645,21 @@ code.wrap { overflow-wrap: anywhere; }
 .feature-pill.on { background: var(--ok-soft); color: var(--ok); }
 .feature-hint { margin: -4px 0 12px; font-size: 12.5px; }
 .inp[readonly] { color: var(--text-2); background: var(--bg); }
+
+/* ---- File › Open (project folder) ---- */
+.modal.open-dialog { width: min(620px, calc(100vw - 32px)); }
+.open-dir { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12px; margin-bottom: 10px; min-width: 0; }
+.open-dir code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open-error { color: var(--err); font-size: 12px; margin-bottom: 8px; }
+.open-filter { width: 100%; margin-bottom: 8px; }
+.open-list { border: 1px solid var(--border); border-radius: 8px; height: 300px; overflow: auto; margin-bottom: 14px; }
+.open-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: default; user-select: none; }
+.open-row:hover { background: var(--bg-hover); }
+.open-row.on { background: var(--sel); }
+.open-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open-when { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.open-tag { font-size: 11px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-2); }
+.open-empty { padding: 28px 16px; text-align: center; color: var(--text-2); }
+.file-chip .file-old { color: var(--text-3); text-decoration: line-through; max-width: 160px; flex-shrink: 3; }
+.file-chip span { min-width: 0; }
+.toast span { overflow-wrap: anywhere; }

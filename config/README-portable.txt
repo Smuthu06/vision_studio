@@ -25,6 +25,19 @@ Choosing desktop or web mode
     VisionStudio.exe --mode web --no-browser
     VisionStudio.exe --config D:\bench\vision-studio.ini
 
+Where configurations are saved
+  File > Save does not ask for a name. It writes <Project Name>_v<version>.json
+  (e.g. sample_v1.0.0.json for project "sample", version V.1.0.0) into the
+  folder set by project_dir under [app] in VisionStudio.ini. The default is
+  ../../configurations/project_configuration, relative to the INI's folder; it
+  is created on the first save.
+  Saving again replaces the open file. A new version or project name gives a new
+  file. Vision Studio asks before replacing any other file of the same name.
+  File > Open lists the configurations in that folder; "Browse..." opens a
+  file from anywhere else.
+  In web mode only the PC running Vision Studio saves into the folder; other
+  PCs download the file instead.
+
 Requirements
   Windows 10 or 11 (64-bit). Desktop mode uses Microsoft Edge WebView2, which is
   preinstalled on Windows 10/11. If the window stays blank, install the

@@ -1,6 +1,7 @@
 //! Web mode: serves the UI that is embedded in the executable over plain HTTP,
 //! so any browser can use Vision Studio. No files are read from disk.
 
+use crate::projects::{FileError, ProjectDir};
 use crate::ui_config::{SaveError, Store, MAX_BYTES};
 use std::io::Read;
 use std::sync::Arc;
@@ -10,15 +11,18 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 /// Start the server on a background thread. Returns an error message if the
 /// address cannot be bound (e.g. the port is already in use).
-pub fn serve<R: Runtime>(app: AppHandle<R>, host: &str, port: u16, store: Arc<Store>) -> Result<(), String> {
+pub fn serve<R: Runtime>(app: AppHandle<R>, host: &str, port: u16, store: Arc<Store>, projects: Arc<ProjectDir>) -> Result<(), String> {
     let addr = if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
     let server = Server::http(&addr).map_err(|e| format!("Could not start the web server on {addr}: {e}"))?;
     thread::Builder::new()
         .name("vision-studio-web".into())
         .spawn(move || {
             for request in server.incoming_requests() {
-                if request.url().split('?').next() == Some("/api/ui-config") {
+                let path = request.url().split('?').next().unwrap_or("").to_string();
+                if path == "/api/ui-config" {
                     handle_ui_config(&store, request);
+                } else if path == "/api/projects" || path.starts_with("/api/projects/") {
+                    handle_projects(&projects, &path, request);
                 } else {
                     handle(&app, request);
                 }
@@ -93,6 +97,67 @@ fn handle_ui_config(store: &Store, mut request: Request) {
     let _ = request.respond(response);
 }
 
+/// Percent-decode a URL path segment (file names may contain spaces etc.).
+pub fn decode_segment(seg: &str) -> Option<String> {
+    let b = seg.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' {
+            let hex = std::str::from_utf8(b.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// GET /api/projects                → folder listing (anyone who can open the editor)
+/// GET /api/projects/<name>         → file text
+/// PUT /api/projects/<name>?overwrite=1  {text}  → save (only this PC)
+fn handle_projects(projects: &ProjectDir, path: &str, mut request: Request) {
+    let peer_loopback = request.remote_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    let host = request.headers().iter().find(|h| h.field.equiv("Host")).map(|h| h.value.as_str().to_string());
+    let local = is_local(peer_loopback, host.as_deref());
+    let err = |status: u16, e: FileError| json_response(status, &e);
+    let status_of = |e: &FileError| match e.kind.as_str() { "exists" => 409, "invalid" => 400, "notFound" => 404, "forbidden" => 403, _ => 500 };
+    let name = path.strip_prefix("/api/projects/").map(decode_segment);
+    let overwrite = request.url().split_once('?').map(|(_, q)| q.split('&').any(|kv| kv == "overwrite=1")).unwrap_or(false);
+    let response = match (request.method().clone(), name) {
+        (Method::Get | Method::Head, None) => json_response(200, &projects.list(local)),
+        (Method::Get | Method::Head, Some(Some(n))) => match projects.read(&n) {
+            Ok(text) => Response::from_data(text.into_bytes())
+                .with_header(header("Content-Type", "application/json; charset=utf-8"))
+                .with_header(header("Cache-Control", "no-store")),
+            Err(e) => err(status_of(&e), e),
+        },
+        (Method::Put, Some(Some(n))) => {
+            let marked = request.headers().iter().any(|h| h.field.equiv("X-Vision-Studio"));
+            if !local || !marked {
+                err(403, FileError::new("forbidden", "Configurations can only be saved on the PC running Vision Studio"))
+            } else {
+                let mut body = Vec::new();
+                let read = request.as_reader().take(crate::projects::MAX_BYTES as u64 + 1024).read_to_end(&mut body);
+                #[derive(serde::Deserialize)]
+                struct Put { text: String }
+                match read.ok().and_then(|_| serde_json::from_slice::<Put>(&body).ok()) {
+                    None => err(400, FileError::new("invalid", "Malformed request")),
+                    Some(p) => match projects.save(&n, &p.text, overwrite) {
+                        Ok(s) => json_response(200, &s),
+                        Err(e) => err(status_of(&e), e),
+                    },
+                }
+            }
+        }
+        (_, Some(None)) => err(400, FileError::new("invalid", "Malformed file name")),
+        _ => err(405, FileError::new("invalid", "Method not allowed")),
+    };
+    let _ = request.respond(response);
+}
+
 fn handle<R: Runtime>(app: &AppHandle<R>, request: Request) {
     let method = request.method().clone();
     if method != Method::Get && method != Method::Head {
@@ -134,7 +199,14 @@ pub fn names_file(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{asset_path, is_local, names_file};
+    use super::{asset_path, decode_segment, is_local, names_file};
+
+    #[test]
+    fn decodes_file_names() {
+        assert_eq!(decode_segment("Front%20Cam_v1.0.0.json").as_deref(), Some("Front Cam_v1.0.0.json"));
+        assert_eq!(decode_segment("a%2F..%2Fb.json").as_deref(), Some("a/../b.json")); // rejected later by valid_name
+        assert_eq!(decode_segment("bad%zz"), None);
+    }
 
     #[test]
     fn only_this_pc_may_save() {

@@ -27,12 +27,15 @@ pub struct Config {
     pub open_browser: bool,
     /// `[app] ui_config` as written (path of the dropdown lists file).
     pub ui_config: String,
+    /// `[app] project_dir` as written (folder the configurations are saved in).
+    pub project_dir: String,
     /// The INI file that was used (None = built-in defaults).
     pub source: Option<PathBuf>,
     /// Problems found while reading the file / arguments (shown to the user).
     pub warnings: Vec<String>,
 }
 
+pub const DEFAULT_PROJECT_DIR: &str = "../../configurations/project_configuration";
 pub const MIN_WIDTH: f64 = 980.0;
 pub const MIN_HEIGHT: f64 = 620.0;
 
@@ -47,6 +50,7 @@ impl Default for Config {
             port: 8080,
             open_browser: true,
             ui_config: "ui_config.json".into(),
+            project_dir: DEFAULT_PROJECT_DIR.into(),
             source: None,
             warnings: Vec::new(),
         }
@@ -121,6 +125,9 @@ impl Config {
             ("app", "ui_config") => {
                 if value.is_empty() { self.warnings.push(bad("ui_config path")); } else { self.ui_config = value.to_string(); }
             }
+            ("app", "project_dir") => {
+                if value.is_empty() { self.warnings.push(bad("project_dir path")); } else { self.project_dir = value.to_string(); }
+            }
             ("desktop", "width") => match value.parse::<f64>() {
                 Ok(w) if w.is_finite() && w > 0.0 => self.width = w.max(MIN_WIDTH),
                 _ => self.warnings.push(bad("width")),
@@ -186,10 +193,18 @@ impl Config {
     /// Absolute path of ui_config.json: relative to the INI file's folder,
     /// or to the executable's folder when no INI file was found.
     pub fn ui_config_path(&self) -> PathBuf {
-        let base = self.source.as_ref().and_then(|p| p.parent().map(Path::to_path_buf))
+        crate::ui_config::resolve(&self.ui_config, &self.base_dir())
+    }
+
+    /// Absolute path of the project folder (same rule as ui_config).
+    pub fn project_dir_path(&self) -> PathBuf {
+        crate::ui_config::resolve(&self.project_dir, &self.base_dir())
+    }
+
+    fn base_dir(&self) -> PathBuf {
+        self.source.as_ref().and_then(|p| p.parent().map(Path::to_path_buf))
             .or_else(|| std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)))
-            .unwrap_or_else(|| PathBuf::from("."));
-        crate::ui_config::resolve(&self.ui_config, &base)
+            .unwrap_or_else(|| PathBuf::from("."))
     }
 
     pub fn url(&self) -> String {
@@ -277,6 +292,7 @@ mod tests {
         assert_eq!((c.width, c.height, c.maximized), (1440.0, 900.0, false));
         assert_eq!((c.host.as_str(), c.port, c.open_browser), ("127.0.0.1", 8080, true));
         assert_eq!(c.ui_config, "ui_config.json");
+        assert_eq!(c.project_dir, DEFAULT_PROJECT_DIR);
     }
 
     #[test]
@@ -334,6 +350,9 @@ mod tests {
         c.apply_ini("[app]\nui_config = lists/ui.json\n", "t.ini");
         c.source = Some(PathBuf::from("/opt/vs/VisionStudio.ini"));
         assert_eq!(c.ui_config_path(), PathBuf::from("/opt/vs/lists/ui.json"));
+        assert_eq!(c.project_dir_path(), PathBuf::from("/opt/vs/../../configurations/project_configuration"));
+        c.apply_ini("[app]\nproject_dir = D:/bench/projects\n", "t.ini");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     }
 
     #[test]

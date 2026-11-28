@@ -136,6 +136,8 @@ with sync_playwright() as p:
     assert pr["projectModes"][1] == {"mode": "PassthroughMode", "features": ["DataLogger", "FaultInjection"]}
     assert pr["projectModes"][0] == {"mode": "CaptureMode", "features": ["DataLogger", "EMCfeature"]}, pr["projectModes"][0]
     json.dump(data, open(f"{OUT}/built.json", "w"), indent=2)
+    # no project folder in a plain browser: Save downloads <project>_v<version>.json, no name prompt
+    assert dl.value.suggested_filename == "ADAS_Front_Camera_v1.0.0.json", dl.value.suggested_filename
     print("download:", dl.value.suggested_filename, "keys:", list(cam))
 
     # light theme + sample project + problem navigation

@@ -52,7 +52,18 @@ jobs:
           $stale = @{ text = $f.text; baseModified = 1 } | ConvertTo-Json
           try { Invoke-RestMethod "http://127.0.0.1:18080/api/ui-config" -Method Put -Body $stale -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }; $conflict = $false }
           catch { $conflict = $_.Exception.Response.StatusCode.value__ -eq 409 }
+          # project folder: Save writes <project>_v<version>.json to ..\..\configurations\project_configuration
+          $cfg = @{ text = '{"project":{"project":"sample","version":"V.1.0.0"}}' } | ConvertTo-Json
+          $saved = Invoke-RestMethod "http://127.0.0.1:18080/api/projects/sample_v1.0.0.json" -Method Put -Body $cfg -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }
+          $list = Invoke-RestMethod "http://127.0.0.1:18080/api/projects"
+          try { Invoke-RestMethod "http://127.0.0.1:18080/api/projects/sample_v1.0.0.json" -Method Put -Body $cfg -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }; $kept = $false }
+          catch { $kept = $_.Exception.Response.StatusCode.value__ -eq 409 }
           Stop-Process -Id $p.Id -Force
+          $expected = Join-Path (Resolve-Path ".") "configurations\project_configuration\sample_v1.0.0.json"
+          if (-not (Test-Path $expected)) { throw "configuration not saved to $expected (got $($saved.path))" }
+          if ($list.files.name -notcontains "sample_v1.0.0.json") { throw "project folder listing is missing the saved file" }
+          if (-not $kept) { throw "an existing configuration was replaced without overwrite" }
+          Write-Host "project folder ok ($($saved.path))"
           if (-not $conflict) { throw "stale save was not rejected" }
           Write-Host "ui_config API ok ($($s.path))"
       - uses: actions/upload-artifact@v4
