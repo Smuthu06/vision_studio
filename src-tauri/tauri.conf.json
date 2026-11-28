@@ -29,7 +29,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../config/vision-studio.ini": "vision-studio.ini"
+      "../config/vision-studio.ini": "vision-studio.ini",
+      "../config/ui_config.json": "ui_config.json"
     },
     "windows": {
       "nsis": {

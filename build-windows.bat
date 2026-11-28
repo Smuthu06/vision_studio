@@ -15,6 +15,7 @@ rem      nopause     never wait for a key press (for CI / scripts)
 rem
 rem  Output:  release\VisionStudio\VisionStudio.exe
 rem           release\VisionStudio\VisionStudio.ini
+rem           release\VisionStudio\ui_config.json     (dropdown lists)
 rem           release\VisionStudio\README.txt
 rem           release\VisionStudio-portable.zip
 rem           release\installers\...              (with "installer")
@@ -140,6 +141,12 @@ if exist "%OUT%\VisionStudio.ini" (
 ) else (
     copy /y "config\vision-studio.ini" "%OUT%\VisionStudio.ini" >nul || goto :fail
 )
+rem Keep an existing ui_config.json too: it holds the dropdown lists edited in Settings.
+if exist "%OUT%\ui_config.json" (
+    echo        Kept existing %OUT%\ui_config.json
+) else (
+    copy /y "config\ui_config.json" "%OUT%\ui_config.json" >nul || goto :fail
+)
 copy /y "config\README-portable.txt" "%OUT%\README.txt" >nul
 
 if exist "release\VisionStudio-portable.zip" del /q "release\VisionStudio-portable.zip"
@@ -160,6 +167,7 @@ echo.
 echo  Done.
 echo    Program : %CD%\%OUT%\VisionStudio.exe
 echo    Settings: %CD%\%OUT%\VisionStudio.ini   ^(mode = desktop ^| web^)
+echo    Lists   : %CD%\%OUT%\ui_config.json    ^(edited in File ^> Settings^)
 if exist "release\VisionStudio-portable.zip" echo    Portable: %CD%\release\VisionStudio-portable.zip
 echo.
 echo  Edit VisionStudio.ini and set  mode = web  to use Vision Studio in a browser.

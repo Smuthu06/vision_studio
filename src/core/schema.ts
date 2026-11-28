@@ -75,6 +75,11 @@ export function todayDDMMYYYY(): string {
 // --------------------------------------------------------------------------
 export type Kind = "str" | "int" | "float" | "enum" | "intenum" | "bool" | "multi" | "hexstr" | "intlist";
 
+/** Option lists maintained in the Settings window (see catalog.ts). */
+export type CatalogSource =
+  | "features" | "imagers" | "serializers" | "manufacturers" | "models" | "hwSerializers" | "hwDeserializers"
+  | "imageFormats" | "dataTypes";
+
 export interface FieldSpec {
   key: string;               // dotted path into the node's JSON body
   label: string;
@@ -92,6 +97,9 @@ export interface FieldSpec {
   placeholder?: string;
   default?: Json;
   width?: number;            // table column width (px)
+  source?: CatalogSource;    // options come from the Settings catalog
+  strict?: boolean;          // value outside the catalog list = error (else warning)
+  optionLabels?: Record<string, string>; // display text per option value (filled by resolveSpec)
 }
 
 export interface TableSpec {

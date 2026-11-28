@@ -54,8 +54,8 @@ with sync_playwright() as p:
     ctx_add(page, "ADAS_Front_Camera", "Add Camera Models")
     ctx_add(page, "Camera Models", "Add Camera Model")
     field(page, "Model").fill("ADAS_Camera_Model_A")
-    field(page, "Imager").fill("SENSOR_MODEL_X")
-    field(page, "Serializer IC").fill("SER_IC_PART_A")
+    field(page, "Imager").select_option(label="SENSOR_MODEL_X")       # dropdowns fed by Settings
+    field(page, "Serializer IC").select_option(label="SER_IC_PART_A")
     field(page, "Imager I2C Address").fill("0x34")
     field(page, "Imager I2C Address").focus()
     fc = page.locator(".focus-card")
@@ -68,9 +68,8 @@ with sync_playwright() as p:
     page.wait_for_selector(".menu")
     page.locator(".menu-item", has_text="Add Hardware").click()
     ctx_add(page, "Hardware", "Add Capture Hardware")
-    field(page, "Deserializer IC").fill("DES_IC_PART_B")
+    assert field(page, "Deserializer IC").input_value() != "__invalid"    # pre-filled from Settings
     ctx_add(page, "Hardware", "Add Passthrough Hardware")
-    field(page, "Deserializer IC").fill("DES_IC_PART_B")
     page.locator("button", has_text="Auto 1:1").click()
     shot(page, "05_gpio_routing")
 

@@ -7,6 +7,7 @@
  */
 import { DEFS, EMBEDDED_INFO_TABLE, EMBEDDED_LINE_TABLE, type CNode, type NodeType, type TreeIndex } from "./model";
 import { displayValue, isRequired, kindOf, type FieldSpec, type TableSpec } from "./schema";
+import { SOURCE_INFO } from "./catalog";
 
 export interface InputDoc {
   doc: string;          // what the input means and how it is used
@@ -50,11 +51,11 @@ export const NODE_DOCS: Record<NodeType, string> = {
 // --------------------------------------------------------------------------
 const HW_COMMON: Record<string, InputDoc> = {
   manufacture: {
-    doc: "Vendor of the bench interface board. Stored as free text; keep the same spelling across projects so bench software can match it.",
+    doc: "Vendor of the bench interface board. Choosing a manufacturer narrows the Board Model list; manufacturers and their models are maintained in File › Settings › Hardware.",
     example: "NationalInstruments",
   },
   model: {
-    doc: "Model of the PXIe FPGA frame grabber / SerDes interface board installed in the bench for this mode.",
+    doc: "Model of the PXIe FPGA frame grabber / SerDes interface board installed in the bench for this mode. Choosing a model narrows the serializer and deserializer lists to the ICs it supports.",
     example: "NI1487",
   },
   deserializer: {
@@ -121,7 +122,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
       tip: "A different dataFormat on an \"Image\" frame output raises a warning.",
     },
     imager: {
-      doc: "Model of the image sensor IC inside the camera.",
+      doc: "Model of the image sensor IC inside the camera. Pick it from the list maintained in File › Settings › Imagers.",
       example: "SENSOR_MODEL_X",
     },
     operatingVoltage: {
@@ -131,7 +132,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
       tip: "Check the camera datasheet – an incorrect voltage can damage the DUT.",
     },
     serializer: {
-      doc: "Part number of the serializer IC inside the camera that drives the serial link (GMSL, FPD-Link, …).",
+      doc: "Part number of the serializer IC inside the camera that drives the serial link (GMSL, FPD-Link, …). The list is maintained in File › Settings › Camera serializers.",
       example: "SER_IC_PART_A",
       tip: "In PassthroughMode the bench's serializer normally uses the same part, so the ECU sees an identical link.",
     },
@@ -355,7 +356,11 @@ export function constraintRows(spec: FieldSpec): Array<[string, string]> {
       : spec.min !== undefined ? `≥ ${f(spec.min)}` : `≤ ${f(spec.max!)}`]);
   }
   if (spec.pattern) rows.push(["Format", spec.hint?.replace(/^must (be |have the form )?/, "") ?? spec.pattern.source]);
-  if (k === "enum" || k === "multi") rows.push(["Allowed", (spec.options ?? []).join(", ")]);
+  if (spec.source) rows.push(["Values from", `Settings › ${SOURCE_INFO[spec.source].label}${spec.strict ? "" : " (other values give a warning)"}`]);
+  if (k === "enum" || k === "multi") {
+    const opts = spec.options ?? [];
+    rows.push(["Allowed", opts.length ? opts.map((o) => spec.optionLabels?.[o] ?? o).join(", ") : "— list is empty —"]);
+  }
   if (k === "intenum") rows.push(["Allowed", (spec.intOptions ?? []).map(([v, l]) => `${v} = ${l}`).join(", ")]);
   if (k === "hexstr" && spec.min === undefined) rows.push(["Format", "hex digits, optional 0x, several bytes separated by spaces"]);
   if (spec.default !== undefined && spec.default !== null && spec.default !== "")

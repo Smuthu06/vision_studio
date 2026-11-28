@@ -71,7 +71,7 @@ release\VisionStudio-portable.zip
 release\installers\...                     (with "installer")
 ```
 
-Rebuilding keeps an existing `VisionStudio.ini`, so your settings survive. The
+Rebuilding keeps an existing `VisionStudio.ini` and `ui_config.json`, so your settings survive. The
 `windows-portable` GitHub workflow runs this same script on a Windows runner, smoke-tests
 web mode, and offers the portable folder as a download.
 
@@ -82,6 +82,7 @@ The exe reads `VisionStudio.ini` from its own folder (template: `config/vision-s
 ```ini
 [app]
 mode = desktop        ; desktop = own window, web = serve the editor to a browser
+ui_config = ui_config.json   ; dropdown lists (File › Settings), may be a network path
 
 [desktop]
 width = 1440
@@ -149,6 +150,43 @@ one-line hint listing what their right-click menu can add.
   is reserved for findings that belong to no single input, such as a missing hardware board
   for an enabled mode.
 
+**Settings (File › Settings…, Ctrl+,).** Manages the lists behind the editor's dropdowns:
+
+| Section | Feeds |
+| --- | --- |
+| Mode features | Project Modes › Features |
+| Imagers | Camera Model › Imager |
+| Camera serializers | Camera Model › Serializer IC |
+| Hardware: Manufacturer → Model → Serializer / Deserializer ICs | Capture / Passthrough Hardware (cascading: the manufacturer narrows the models, the model narrows the ICs) |
+| Image formats | Camera Model › Packet Format, Frame Outputs › Format |
+| Data types | Frame Outputs › Data ID (shown as `0x2A – RAW8`) |
+
+* Changes apply to the dropdowns and to validation as soon as you press **Apply**. Every
+  dropdown ends with *Edit list in Settings…*, which opens the matching section.
+* If you rename a value the open configuration uses, Vision Studio offers to update those
+  uses in one undoable step. Each row shows how often its value is used.
+* A value outside the list is an **error** for features and image formats, which were
+  always fixed lists. For the other lists it's a **warning**, so older files still open.
+* **Where the lists live:** `ui_config.json`, next to the exe. The INI line
+  `[app] ui_config = ui_config.json` sets the path; it's resolved against the INI's folder
+  and can be a shared network file. The template is `config/ui_config.json`, and a unit
+  test keeps it equal to the built-in defaults. A missing file is created from the current
+  lists on the first start.
+  * **Desktop mode** reads and writes the file through the native app.
+  * **Web mode** serves it as `GET /api/ui-config`. `PUT` is accepted only from the PC
+    running the exe (loopback address and a loopback `Host` header). Other PCs see the
+    lists read-only.
+  * **Without the exe** (dev server, static hosting) the lists are kept in the browser.
+* **Safe saving:**
+  * Saves are atomic.
+  * Invalid JSON is reported with its line and column, and the file isn't overwritten
+    unless you Apply.
+  * If someone else saved the file while you were editing, you choose between
+    *Replace with mine* and *Load their version*.
+* **Export** and **Import** copy lists between installations, and **Reset to defaults**
+  restores the shipped lists. The core logic is in `src/core/catalog.ts` and
+  `src-tauri/src/ui_config.rs`.
+
 **Details pane (right side, F1).** It documents the selected node and every one of its inputs:
 * For each node: what it represents, where it sits in the saved JSON (for example
   `project.cameraModels[0].hw[1].passthroughMode`), which child nodes it can contain, and its
@@ -186,14 +224,16 @@ src/core/        schema.ts (field specs, parsing, value checks)
                  model.ts  (node types, allowed children, JSON round-trip, validation)
                  guide.ts  (step-by-step build checklist)
                  docs.ts   (input documentation for the Details pane)
+                 catalog.ts (Settings lists: defaults, cascades, validation, renames)
 src/state/       store.ts  (document state, undo/redo)
-src/ui/          Tree, Editor (+ section registry), DetailsPane, fields/DataTable, Panels, overlays, icons
+src/ui/          Tree, Editor (+ section registry), Settings, DetailsPane, fields/DataTable, Panels, overlays, icons
 src/platform.ts  web ⇄ desktop file I/O abstraction
 src-tauri/       native shell (Rust): INI config (config.rs), web-mode server (web.rs),
                  mode switch + tray (lib.rs), dialog/fs plugins, permissions, icons
 config/          vision-studio.ini template + README for the portable folder
 build-windows.bat  Windows build: exe + ini (+ installers)
 e2e/flow.py      Playwright test: builds a full config from an empty project and saves it
+e2e/settings.py  Playwright test: Settings lists drive the dropdowns, renames, cascade, persistence
 ```
 
 **Adding a node type.** Add an entry to `DEFS` in `src/core/model.ts` with its fields,

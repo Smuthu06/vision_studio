@@ -42,13 +42,24 @@ jobs:
               if ($r.StatusCode -eq 200 -and $r.Content -match "Vision Studio") { $ok = $true; break }
             } catch {}
           }
-          Stop-Process -Id $p.Id -Force
-          if (-not $ok) { throw "web mode did not serve the UI" }
+          if (-not $ok) { Stop-Process -Id $p.Id -Force; throw "web mode did not serve the UI" }
           Write-Host "web mode served the UI"
+          # dropdown lists API: readable, saveable from this PC, conflict-checked
+          $f = Invoke-RestMethod "http://127.0.0.1:18080/api/ui-config"
+          if (-not $f.canSave -or -not $f.text) { Stop-Process -Id $p.Id -Force; throw "ui_config.json not served as editable" }
+          $body = @{ text = $f.text; baseModified = $f.modified } | ConvertTo-Json
+          $s = Invoke-RestMethod "http://127.0.0.1:18080/api/ui-config" -Method Put -Body $body -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }
+          $stale = @{ text = $f.text; baseModified = 1 } | ConvertTo-Json
+          try { Invoke-RestMethod "http://127.0.0.1:18080/api/ui-config" -Method Put -Body $stale -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }; $conflict = $false }
+          catch { $conflict = $_.Exception.Response.StatusCode.value__ -eq 409 }
+          Stop-Process -Id $p.Id -Force
+          if (-not $conflict) { throw "stale save was not rejected" }
+          Write-Host "ui_config API ok ($($s.path))"
       - uses: actions/upload-artifact@v4
         with:
           name: VisionStudio-portable
           path: |
             release/VisionStudio/VisionStudio.exe
             release/VisionStudio/VisionStudio.ini
+            release/VisionStudio/ui_config.json
             release/VisionStudio/README.txt

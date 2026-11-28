@@ -145,9 +145,10 @@ describe("tree building", () => {
     const hw = add(cam, "Add Hardware");
     const frames = add(cam, "Add Frame Information");
     expect(cam.children.map((c) => c.type)).toEqual(["hardware", "frames", "monitoring"]);
-    cam.params.serializer = "SER_X";
+    cam.params.serializer = "SER_X";                 // not supported by the default board model
     const pt = add(hw, "Add Passthrough Hardware");
-    expect(pt.params.serializer).toBe("SER_X");
+    expect(pt.params.serializer).toBe("SER_IC_PART_A"); // → the model's first serializer
+    expect(pt.params.deserializer).toBe("DES_IC_PART_B");
     expect(pt.jsonKey).toBe("passthroughMode");
     const vc0 = add(frames, "Add Virtual Channel");
     const vc1 = add(frames, "Add Virtual Channel");

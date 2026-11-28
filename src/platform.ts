@@ -171,3 +171,73 @@ export const storage = {
     try { window.localStorage.removeItem(key); } catch { /* ignore */ }
   },
 };
+
+// ---------------------------------------------------------------------------
+// ui_config.json – the Settings lists
+//   desktop: read/written by the native app next to VisionStudio.exe
+//   server:  web mode – the exe serves /api/ui-config; only its own PC may save
+//   browser: no backend (dev server, static hosting) – kept in this browser
+// ---------------------------------------------------------------------------
+export type UiConfigBackend = "desktop" | "server" | "browser";
+
+export interface UiConfigState {
+  backend: UiConfigBackend;
+  path: string | null;
+  text: string | null;
+  modified: number | null;
+  canSave: boolean;
+  error: string | null;
+}
+
+export class UiConfigConflict extends Error {
+  constructor(message: string, public current: UiConfigState) { super(message); }
+}
+
+const BROWSER_KEY = "vision-studio.catalog";
+
+interface FileDto { path: string; text: string | null; modified: number | null; canSave: boolean; error: string | null }
+interface SaveErrorDto { kind: string; message: string; current?: FileDto | null }
+const fromDto = (backend: UiConfigBackend, f: FileDto): UiConfigState =>
+  ({ backend, path: f.path, text: f.text ?? null, modified: f.modified ?? null, canSave: !!f.canSave, error: f.error ?? null });
+
+export async function loadUiConfig(): Promise<UiConfigState> {
+  if (isDesktop) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return fromDto("desktop", await invoke<FileDto>("ui_config_load"));
+  }
+  try {
+    const r = await fetch("api/ui-config", { cache: "no-store" });
+    if (r.ok && (r.headers.get("content-type") ?? "").includes("application/json")) {
+      const f = await r.json();
+      if (f && typeof f.path === "string") return fromDto("server", f);
+    }
+  } catch { /* no backend */ }
+  return { backend: "browser", path: null, text: storage.get(BROWSER_KEY), modified: null, canSave: true, error: null };
+}
+
+/** Save the lists. Throws UiConfigConflict when the file changed since `state` was loaded. */
+export async function saveUiConfig(state: UiConfigState, text: string): Promise<UiConfigState> {
+  if (state.backend === "browser") {
+    storage.set(BROWSER_KEY, text);
+    return { ...state, text };
+  }
+  if (state.backend === "desktop") {
+    const { invoke } = await import("@tauri-apps/api/core");
+    try {
+      return fromDto("desktop", await invoke<FileDto>("ui_config_save", { text, baseModified: state.modified }));
+    } catch (e) {
+      const err = e as SaveErrorDto;
+      if (err?.kind === "conflict" && err.current) throw new UiConfigConflict(err.message, fromDto("desktop", err.current));
+      throw new Error(err?.message ?? String(e));
+    }
+  }
+  const r = await fetch("api/ui-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Vision-Studio": "1" },
+    body: JSON.stringify({ text, baseModified: state.modified }),
+  });
+  const body = await r.json().catch(() => null);
+  if (r.ok) return fromDto("server", body);
+  if (r.status === 409 && body?.current) throw new UiConfigConflict(body.message, fromDto("server", { ...body.current, canSave: state.canSave }));
+  throw new Error(body?.message ?? `Saving failed (HTTP ${r.status})`);
+}

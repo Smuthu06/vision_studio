@@ -5,7 +5,10 @@ import {
   newDocument, nodeLabel, nodeToJson, TreeIndex, validateTree, walk, type ChildOption, type CNode, type Issue,
 } from "./core/model";
 import { RANK, type Severity } from "./core/schema";
-import { guardClose, isDesktop, openFile, platformName, saveFile, setWindowTitle, storage } from "./platform";
+import {
+  guardClose, isDesktop, loadUiConfig, openFile, platformName, saveFile, saveUiConfig, setWindowTitle, storage,
+  UiConfigConflict, type UiConfigState,
+} from "./platform";
 import { initialState, useAppStore } from "./state/store";
 import { Editor, type FocusRequest } from "./ui/Editor";
 import { AppLogo, Icon } from "./ui/icons";
@@ -14,9 +17,18 @@ import { BottomPanel, BuildGuide } from "./ui/Panels";
 import { Tree } from "./ui/Tree";
 import { DetailsPane, parseInputId, type ActiveInput } from "./ui/DetailsPane";
 import sample from "./assets/sample.json";
+import { applyRenames, catalogUsage, defaultCatalog, normalizeCatalog, usageKey, type Catalog, type Rename, type SettingsSection } from "./core/catalog";
+import { SettingsWindow } from "./ui/Settings";
 
 const APP = "Vision Studio";
 const DRAFT_KEY = "vision-studio.draft";
+const CATALOG_KEY = "vision-studio.catalog";
+
+function loadCatalog(): Catalog {
+  const raw = storage.get(CATALOG_KEY);
+  if (!raw) return defaultCatalog();
+  try { return normalizeCatalog(JSON.parse(raw)).catalog; } catch { return defaultCatalog(); }
+}
 const isMac = typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
 
@@ -31,7 +43,10 @@ function Studio() {
   const { state, dispatch, mutate } = useAppStore(() => initialState());
   const root = state.doc.root;
   const idx = useMemo(() => new TreeIndex(root), [root]);
-  const issues = useMemo(() => validateTree(root, idx), [root, idx]);
+  const [catalog, setCatalog] = useState<Catalog>(loadCatalog);
+  const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
+  const [uiFile, setUiFile] = useState<UiConfigState | null>(null);   // where the lists live (ui_config.json)
+  const issues = useMemo(() => validateTree(root, idx, catalog), [root, idx, catalog]);
   const steps = useMemo(() => computeSteps(root, issues, idx), [root, issues, idx]);
   const selected = idx.get(state.selectedId) ?? root;
 
@@ -61,6 +76,8 @@ function Studio() {
   });
   const stateRef = useRef(state);
   stateRef.current = state;
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
 
   // ---- gentle validation: only show what the user has touched, until they validate/save ---------
   const visibleIssues = useMemo(() => {
@@ -119,6 +136,90 @@ function Studio() {
   }, [theme]);
 
   useEffect(() => { storage.set("vision-studio.details", detailsOpen ? "open" : "closed"); }, [detailsOpen]);
+  useEffect(() => {
+    const on = (e: Event) => setSettingsAt(((e as CustomEvent).detail?.section as SettingsSection) ?? "features");
+    window.addEventListener("cce:open-settings", on);
+    return () => window.removeEventListener("cce:open-settings", on);
+  }, []);
+
+  const fileName = (f: UiConfigState | null) => (f?.path ? f.path.split(/[\\/]/).pop()! : "ui_config.json");
+
+  /** Use a loaded ui_config.json; returns false when it could not be used. */
+  const adoptUiFile = (f: UiConfigState, announce = false): boolean => {
+    setUiFile(f);
+    if (f.error) { toast(`${f.error} – using the built-in lists; fix the file or Apply new settings to replace it.`, "error"); return false; }
+    if (!f.text) return true;
+    try {
+      const { catalog: c, warnings } = normalizeCatalog(JSON.parse(f.text));
+      setCatalog(c);
+      if (warnings.length) toast(`${fileName(f)}: ${warnings.length} entr${warnings.length > 1 ? "ies" : "y"} ignored – ${warnings[0]}`, "info");
+      else if (announce) toast(`Reloaded ${fileName(f)}`, "success");
+      return true;
+    } catch (e) {
+      toast(`${fileName(f)} could not be read: ${(e as Error).message}`, "error");
+      return false;
+    }
+  };
+
+  const reloadUiConfig = async (announce = true) => {
+    try {
+      let f = await loadUiConfig();
+      // first start next to the exe: create the file from the current lists so it can be found and shared
+      if (!f.text && !f.error && f.backend !== "browser" && f.canSave) {
+        try { f = await saveUiConfig(f, JSON.stringify(catalogRef.current, null, 2) + "\n"); } catch { /* read-only folder: keep defaults */ }
+      }
+      adoptUiFile(f, announce);
+    } catch (e) {
+      toast(`Could not load the dropdown lists: ${(e as Error).message}`, "error");
+    }
+  };
+  useEffect(() => { void reloadUiConfig(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Apply edited settings: save ui_config.json, then update the dropdowns (and, if wanted, renamed values). */
+  const applySettings = async (next: Catalog, renames: Rename[]) => {
+    const use = catalogUsage(root);
+    const used = renames.map((r) => ({ r, n: use.get(usageKey(r.source, r.from, r.manufacturer ?? "", r.model ?? "")) ?? 0 })).filter((x) => x.n > 0);
+    let doRename = false;
+    if (used.length) {
+      const answer = await confirm({
+        title: "Update the open configuration?",
+        confirmLabel: "Update values", cancelLabel: "Keep old values",
+        message: (<>
+          <p style={{ marginTop: 0 }}>You renamed values that this configuration uses:</p>
+          <ul className="rename-list">{used.map(({ r, n }, i) => <li key={i}><code>{r.from}</code> → <code>{r.to}</code> <span className="muted">({n}×)</span></li>)}</ul>
+          <p style={{ marginBottom: 0 }}>Update them to the new names? Keeping them flags the old values for review.</p>
+        </>),
+      });
+      doRename = answer === "confirm";
+    }
+
+    const text = JSON.stringify(next, null, 2) + "\n";
+    const base: UiConfigState = uiFile ?? { backend: "browser", path: null, text: null, modified: null, canSave: true, error: null };
+    let saved: UiConfigState;
+    try {
+      saved = await saveUiConfig(base, text);
+    } catch (e) {
+      if (!(e instanceof UiConfigConflict)) { toast(`Settings not saved: ${(e as Error).message}`, "error"); return; }
+      const answer = await confirm({
+        title: `${fileName(base)} was changed`,
+        message: <>Someone else saved <code>{base.path}</code> after you opened Settings. Replace their lists with yours, or load their version and discard your changes?</>,
+        confirmLabel: "Replace with mine", extraLabel: "Load their version", cancelLabel: "Back to Settings", danger: true,
+      });
+      if (answer === "extra") { adoptUiFile(e.current, true); setSettingsAt(null); return; }
+      if (answer !== "confirm") { setUiFile(e.current); return; }
+      try { saved = await saveUiConfig(e.current, text); } catch (e2) { toast(`Settings not saved: ${(e2 as Error).message}`, "error"); return; }
+    }
+    setUiFile(saved);
+    setCatalog(next);
+    let updated = 0;
+    if (doRename) {
+      dispatch({ type: "mutateDoc", recipe: (r) => { applyRenames(r, renames); } });
+      updated = used.reduce((a, x) => a + x.n, 0);
+    }
+    setSettingsAt(null);
+    const where = saved.backend === "browser" ? "in this browser" : `to ${fileName(saved)}`;
+    toast(`Settings saved ${where}${updated ? ` – ${updated} value(s) updated in this configuration` : ""}`, "success");
+  };
   useEffect(() => { storage.set("vision-studio.detailsWidth", String(detailsW)); }, [detailsW]);
   useEffect(() => { setActiveInput(null); }, [state.selectedId]);
 
@@ -177,12 +278,12 @@ function Studio() {
 
   const openContext = (node: CNode, x: number, y: number) => {
     const items: MenuItem[] = [{ kind: "header", label: nodeLabel(node), nodeIcon: defOf(node).icon }];
-    const opts = childOptions(node, idx);
+    const opts = childOptions(node, idx, catalog);
     for (const o of opts) items.push({ label: o.label, nodeIcon: o.icon, hint: o.enabled ? o.description : o.reason, disabled: !o.enabled, onSelect: () => addChild(node, o) });
     if (opts.length) items.push({ kind: "separator" });
     const parent = idx.parentOf(node);
     if (!opts.length && parent) {
-      const popts = childOptions(parent, idx).filter((o) => o.type === node.type || o.enabled);
+      const popts = childOptions(parent, idx, catalog).filter((o) => o.type === node.type || o.enabled);
       if (popts.length) {
         items.push({ kind: "header", label: `Add to ${nodeLabel(parent)}`, nodeIcon: defOf(parent).icon });
         for (const o of popts) items.push({ label: o.label, nodeIcon: o.icon, hint: o.enabled ? o.description : o.reason, disabled: !o.enabled, onSelect: () => addChild(parent, o) });
@@ -248,7 +349,7 @@ function Studio() {
       setCollapsed(new Set());
       resetValidationView(true);
       storage.remove(DRAFT_KEY);
-      const n = validateTree(doc.root).filter((i) => i.severity === "error").length;
+      const n = validateTree(doc.root, new TreeIndex(doc.root), catalogRef.current).filter((i) => i.severity === "error").length;
       toast(`Opened ${name ?? "file"}${n ? ` – ${n} validation error(s)` : ""}`, n ? "error" : "success");
     } catch (e) {
       toast(e instanceof LoadError ? `Could not open ${name ?? "file"}: ${e.message}` : `Could not open file: ${(e as Error).message}`, "error");
@@ -280,7 +381,7 @@ function Studio() {
   async function save(as: boolean): Promise<boolean> {
     const st = stateRef.current;
     setRevealAll(true);
-    const errs = validateTree(st.doc.root).filter((i) => i.severity === "error").length;
+    const errs = validateTree(st.doc.root, new TreeIndex(st.doc.root), catalogRef.current).filter((i) => i.severity === "error").length;
     if (errs) {
       const r = await confirm({ title: "Configuration has errors", confirmLabel: "Save anyway",
         message: `${errs} validation error(s) remain. The file will not conform to the schema until they are fixed.` });
@@ -318,6 +419,7 @@ function Studio() {
     undo: () => dispatch({ type: "undo" }), redo: () => dispatch({ type: "redo" }), validate,
     duplicate: () => duplicate(selected),
     details: () => setDetailsOpen((o) => !o),
+    settings: () => setSettingsAt((s) => s ?? "features"),
     menu: () => openMenuFor(selected),
   };
   useEffect(() => {
@@ -335,6 +437,7 @@ function Studio() {
       if (k === "z" && !e.shiftKey) { e.preventDefault(); h.undo(); return; }
       if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); h.redo(); return; }
       if (k === "d") return run("duplicate");
+      if (e.key === ",") return run("settings");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -375,6 +478,8 @@ function Studio() {
               { kind: "separator" },
               { label: "Save", icon: "save", shortcut: `${MOD}S`, onSelect: () => void save(false) },
               { label: "Save As…", icon: "saveAs", shortcut: `${MOD}Shift+S`, onSelect: () => void save(true) },
+              { kind: "separator" },
+              { label: "Settings…", icon: "gear", shortcut: `${MOD},`, onSelect: () => setSettingsAt("features") },
               { kind: "separator" },
               { label: "Keyboard shortcuts", icon: "keyboard", onSelect: () => void confirm({ title: "Keyboard shortcuts", confirmLabel: "Close", cancelLabel: "OK", message: <Shortcuts /> }) },
             ] });
@@ -434,10 +539,10 @@ function Studio() {
           onChangeCapture={(e) => markTouched((e.target as HTMLElement).id ?? "")}
           onBlurCapture={(e) => markTouched((e.target as HTMLElement).id ?? "")}>
           <Editor node={selected} idx={idx} issues={byNode.get(selected.id) ?? []} mutate={mutate} onNodeMenu={(n, x, y) => openContext(n, x, y)}
-            onSelect={select} focus={focus} toast={toast} detailsOpen={detailsOpen} />
+            onSelect={select} focus={focus} toast={toast} detailsOpen={detailsOpen} catalog={catalog} />
         </main>
         {detailsOpen && (
-          <DetailsPane node={selected} idx={idx} issues={byNode.get(selected.id) ?? []} active={activeInput}
+          <DetailsPane node={selected} idx={idx} issues={byNode.get(selected.id) ?? []} active={activeInput} catalog={catalog}
             width={detailsW} onResize={setDetailsW} onClose={() => setDetailsOpen(false)} />
         )}
       </div>
@@ -459,6 +564,11 @@ function Studio() {
       </footer>
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
+      {settingsAt && (
+        <SettingsWindow key={uiFile?.modified ?? 0} catalog={catalog} usage={catalogUsage(root)} initialSection={settingsAt}
+          storage={uiFile} onReload={() => void reloadUiConfig(true)}
+          onApply={(c, r) => void applySettings(c, r)} onClose={() => setSettingsAt(null)} />
+      )}
       {dragOver && <div className="drop-overlay"><Icon name="folder" size={40} /><span>Drop a configuration JSON to open it</span></div>}
     </div>
   );
@@ -480,7 +590,7 @@ function Shortcuts() {
   const rows: Array<[string, string]> = [
     [`${isDesktop ? MOD : "Alt+" + MOD}N`, "New project"], [`${MOD}O`, "Open"], [`${MOD}S`, "Save"], [`${MOD}Shift+S`, "Save As"],
     [`${MOD}Z / ${MOD}Y`, "Undo / Redo"], ["F5 or " + MOD + "Enter", "Validate"], ["Right-click / Shift+F10 / Insert", "Node menu: add, duplicate, delete"],
-    ["F1", "Show / hide the Details pane"], ["↑ ↓ ← →", "Navigate the tree"], ["Del (tree focused)", "Delete node"], [`${MOD}D`, "Duplicate camera / VC"],
+    ["F1", "Show / hide the Details pane"], [`${MOD},`, "Settings (dropdown lists)"], ["↑ ↓ ← →", "Navigate the tree"], ["Del (tree focused)", "Delete node"], [`${MOD}D`, "Duplicate camera / VC"],
   ];
   return <table className="shortcuts"><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table>;
 }
