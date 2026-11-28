@@ -236,7 +236,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
     deviceResource: { doc: "PXI chassis resource address of the capture card (deviceResource), as shown in NI MAX.", example: "PXI1Slot2" },
     fpgaBitFile: { doc: "FPGA bit file (.lvbitx) loaded into the device. The list shows the files in the fpga_bitfile folder (bitfile_dir in the INI); the file stores the full path.", example: "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx", tip: "A bit file built for another capture card or IO density gives a warning." },
     dataloggerCommands: { doc: "Datalogger configuration command file. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI); the file stores the full path.", example: "front_logger.json" },
-    fpgaBoardName: { doc: "FPGA board (fpgaBoardName). Its values from File › Settings › FPGA board defaults are written as fpgaDefaults: SI/SO reference clocks, frames on DMA, frame sync window and tolerance, LLP FIFO depth and routing signals.", example: "board1" },
+    fpgaBoardName: { doc: "FPGA board (fpgaBoardName). Its values from File › Settings › FPGA board defaults are written as fpgaDefaults: SI/SO reference clocks, frames on DMA, frame sync window and tolerance and LLP FIFO depth (the routing signals stay in Settings; the schema has no key for them).", example: "board1" },
   },
   testerChannel: {
     channel: { doc: "Bench channel: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). In PassthroughMode this is the input (SI). Each channel can be used once per camera model.", example: "SI1" },
@@ -260,7 +260,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
   testerVc: {
     virtualChannel: { doc: "Virtual channel of the camera model as defined in the selected project (Frame Information); written as VC<n> with its frameInfo.", example: "0 – Front" },
     name: { doc: "Name of this virtual channel.", example: "Image" },
-    debayer: { doc: "Debayer configuration for the image data of this virtual channel, from File › Settings › Debayer configurations. Written as cameraDebayer (the name) and debayerConfiguration (image size, input and output format, conversion parameters).", example: "RAW_RGGB_to_RGB" },
+    debayer: { doc: "Debayer configuration for the image data of this virtual channel, from File › Settings › Debayer configurations. Written as cameraDebayer (the name) and debayerConfiguration with the schema's keys: imageSize, inputFormat and outputFormat (dataSize, bitDepthPerChannel, useBigEndian) and conversionParams (Conv_Param_1).", example: "RAW_RGGB_to_RGB" },
   },
   frameAnalysisWorker: {
     frameVerification: { doc: "Checks every frame of the virtual channel against its frame information (written as \"Frame Verification\").", example: "Enabled" },

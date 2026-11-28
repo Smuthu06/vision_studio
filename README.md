@@ -196,8 +196,8 @@ written when saving:
 | `gpioRouting` | the camera model's Passthrough Hardware (PassthroughMode) |
 | `frameInfo` | the project virtual channel |
 | `i2cWorker.i2cCheckingConfig` | the project's I2C Monitoring of the camera model when the worker mode is Monitoring & Checking; `null` with Monitoring |
-| `fpgaDefaults` | Settings › FPGA board defaults (`SI_Ref_Clk_Freq_(Hz)`, `Frames_on_DMA_Buffer`, …) |
-| `debayerConfiguration` | Settings › Debayer configurations |
+| `fpgaDefaults` | Settings › FPGA board defaults, with the schema's six keys (`SI_Ref_Clk_Freq_(Hz)`, `SO_Ref_Clk_Freq_(Hz)`, `Frames_on_DMA_Buffer`, `Frame_Sync_Window_(# of Frames)`, `Frame_Sync_Tolerance_(us)`, `LLP_FIFO_Depth`) |
+| `debayerConfiguration` | Settings › Debayer configurations, with the schema's keys (`imageSize`, `inputFormat` / `outputFormat` with `dataSize`, `bitDepthPerChannel`, `useBigEndian`, and `conversionParams.Conv_Param_1`) |
 | `channelInfo` | the channels |
 | full paths of `fpgaBitFile`, `dataloggerCommands`, `i2cCommands` | the folders in the INI |
 

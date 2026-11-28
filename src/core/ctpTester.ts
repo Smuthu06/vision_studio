@@ -70,13 +70,11 @@ export function boardToFpgaDefaults(b: BoardDefaults): Json {
     "Frame_Sync_Window_(# of Frames)": b.frameSyncWindow,
     "Frame_Sync_Tolerance_(us)": b.frameSyncToleranceUs,
     LLP_FIFO_Depth: b.llpFifoDepth,
-    Routing_Signals: b.routingSignals.map((r) => ({ Source: r.source, Destination: r.destination })),
   };
 }
 
 const pixel = (f: PixelFormat): Json => ({
   dataSize: f.dataSize, bitDepthPerChannel: f.bitDepthPerChannel, useBigEndian: f.useBigEndian,
-  ImageFormat: f.imageFormat, Format_Parameter_1: f.formatParameter,
 });
 export function debayerToCtp(d: DebayerConfig): Json {
   return {
@@ -84,8 +82,6 @@ export function debayerToCtp(d: DebayerConfig): Json {
     inputFormat: pixel(d.inputFormat),
     outputFormat: pixel(d.outputFormat),
     conversionParams: { Conv_Param_1: d.conversionParameter },
-    deviceList: { preferred: d.devicePreferred, alternative: d.deviceAlternative },
-    Image_Type: d.imageType,
   };
 }
 

@@ -103,7 +103,13 @@ describe("tester configuration (CTP cameraTester schema)", () => {
     expect(vc).toMatchObject({ virtualChannel: "VC0", name: "Front", cameraDebayer: "RAW_RGGB_to_RGB", frameAnalysisWorker: ["Frame Verification"] });
     expect(vc.frameInfo).toMatchObject({ virtualChannelNumber: 0, virtualChannelName: "Front", fps: { max: 30.1, min: 29.9 } });
     expect(vc.debayerConfiguration).toMatchObject({ imageSize: { width: 1632, height: 1290 }, conversionParams: { Conv_Param_1: 0 },
-      inputFormat: { dataSize: 2, bitDepthPerChannel: 12, useBigEndian: 1, ImageFormat: "IMAGE_FORMAT_RAW", Format_Parameter_1: 3 } });
+      inputFormat: { dataSize: 2, bitDepthPerChannel: 12, useBigEndian: 1 } });
+    // only the keys the schema defines
+    expect(Object.keys(vc.debayerConfiguration).sort()).toEqual(["conversionParams", "imageSize", "inputFormat", "outputFormat"]);
+    expect(Object.keys(vc.debayerConfiguration.inputFormat).sort()).toEqual(["bitDepthPerChannel", "dataSize", "useBigEndian"]);
+    expect(Object.keys(vc.debayerConfiguration.outputFormat).sort()).toEqual(["bitDepthPerChannel", "dataSize", "useBigEndian"]);
+    expect(Object.keys(cam.fpgaDefaults).sort()).toEqual(["Frame_Sync_Tolerance_(us)", "Frame_Sync_Window_(# of Frames)",
+      "Frames_on_DMA_Buffer", "LLP_FIFO_Depth", "SI_Ref_Clk_Freq_(Hz)", "SO_Ref_Clk_Freq_(Hz)"]);
     expect(configFileName(doc.root)).toBe("Nissan_ADAS_8MP_TESTER_v1.0.0.json");
     expect(validateTree(doc.root, new TreeIndex(doc.root), c).filter((i) => i.severity === "error")).toEqual([]);
   });
