@@ -69,7 +69,7 @@ describe("tester configuration", () => {
     expect(json.tester.modes[0].cameraModels[0].channels).toEqual([{
       channel: "SI0", name: "Front", pocMode: false, streamingMode: false, i2cInitFile: "",
       i2cWorker: { option: "Monitoring", pauseTime: 100 },
-      virtualChannels: [{ virtualChannel: 0, name: "Front", debayer: "Off", frameAnalysisWorker: {} }],
+      virtualChannels: [{ virtualChannel: 0, name: "Front", debayer: "RAW_RGGB_to_RGB", frameAnalysisWorker: {} }],
     }]);
     // round trip
     const back = documentFromJson(json);
@@ -96,7 +96,7 @@ describe("tester configuration", () => {
     expect(childOptions(t, idx, c)[0]).toMatchObject({ enabled: true, description: "Next: PassthroughMode" });
     insertChild(t, childOptions(t, idx, c)[0].create());
     expect(childOptions(t, new TreeIndex(t), c)[0].enabled).toBe(false);
-    expect(cam.params).toMatchObject({ cameraModel: "ADAS_Camera_Model_A", name: "ADAS_Camera_Model_A", fpgaDevice: "PXIe-1486", fpgaBoardDefaults: "Default" });
+    expect(cam.params).toMatchObject({ cameraModel: "ADAS_Camera_Model_A", name: "ADAS_Camera_Model_A", fpgaDevice: "PXIe-1486", fpgaBoardDefaults: "board1" });
     expect(nodeLabel(cam)).toBe("ADAS_Camera_Model_A");
     cam.params.name = "Front_Left";
     expect(nodeLabel(cam)).toBe("Front_Left");
@@ -173,7 +173,7 @@ describe("tester configuration", () => {
     expect(childOptions(ch, new TreeIndex(doc.root), c).map((o) => o.label)).toEqual(["Add Virtual Channel"]);
     expect(addChannel(cam, c, "Rear").params.channel).toBe("SI1");
     const vc = addVc(ch, c);
-    expect(vc.params).toEqual({ virtualChannel: 0, name: "Front", debayer: "Off" });
+    expect(vc.params).toEqual({ virtualChannel: 0, name: "Front", debayer: "RAW_RGGB_to_RGB" });
     expect(vc.children.map((x) => x.type)).toEqual(["frameAnalysisWorker"]);
     expect(nodeLabel(ch)).toBe("SI0 – Front");
     expect(nodeLabel(vc)).toBe("VC0 – Front");
@@ -196,7 +196,7 @@ describe("tester configuration", () => {
     expect(msgs).toContain("Virtual channel 0 is used more than once on this channel");
     expect(msgs.some((m) => m.startsWith("Option 'Sometimes'"))).toBe(true);
     expect(msgs.some((m) => m.startsWith("Pause Time (ms)"))).toBe(true);
-    expect(msgs).toContain("Debayer Configuration 'XYZ' is not one of: Off, RGGB, GRBG, GBRG, BGGR (add it in Settings › Debayer configurations)");
+    expect(msgs).toContain("Debayer Configuration 'XYZ' is not one of: RAW_RGGB_to_RGB, YUV422_YUYV_to_RGB (add it in Settings › Debayer configurations)");
   });
 
   it("reads older tester files whose channels have no workers yet", () => {

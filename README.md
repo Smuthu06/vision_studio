@@ -188,6 +188,23 @@ A second kind of configuration describes the test bench used for a project. **Fi
 
 Neither worker can be deleted on its own; deleting the channel or virtual channel removes it.
 
+**FPGA board defaults and debayer configurations** are defined in **File › Settings** and stored
+in `ui_config.json`. The tester stores only the name of each.
+
+* **FPGA board defaults** (one entry per board): Board Name, SI/SO Reference Clock Frequency
+  (Hz), # of Frames On DMA, Frame Sync Window (# of Frames), Frame Sync Tolerance (us), LLP FIFO
+  Depth, and the Routing Signals (source → destination, e.g. `PXI_Trig1 → Start_Trig`).
+* **Debayer configurations**:
+  * Name, Image Width and Image Height.
+  * An Input and an Output format, each with Image Format (`IMAGE_FORMAT_RAW/RGB/YUV`), Image
+    Format Parameter, Data Size (1/2/4 bytes), Bit Depth Per Channel and Use Big Endian. The
+    parameter is the Bayer mask for RAW, the channel order for RGB or the YUV layout, following
+    the documented lists for input and output.
+  * Conversion Parameter (BT601/BT709 full/reduced range), Device Preferred / Alternative
+    (`DEVICE_TYPE_GPU/CPU`) and Image Type (IMAQ: Grayscale U8 … RGB U64).
+  * Checks: the bit depth must fit in the data size, and YUV or RGB with a data size other
+    than 1 gives a warning.
+
 The lists from the project and the folders are re-read when the window gets focus, so files
 copied in while Vision Studio is open show up. A value that is no longer offered is reported,
 for example "Bit File '…' is not found in the fpga_bitfile folder". A bit file built for

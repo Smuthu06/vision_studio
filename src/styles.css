@@ -671,3 +671,27 @@ code.wrap { overflow-wrap: anywhere; }
 .pick-when { margin: 6px 0 14px; }
 .status-item.status-warn { color: var(--warn); font-weight: 600; }
 .status-item.status-path { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+
+/* ---- Settings › FPGA board defaults / Debayer configurations ---- */
+.bench-columns { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.bench-row { grid-template-columns: minmax(0, 1fr) 34px 28px 28px; }
+.bench-row .cell-wrap { display: flex; flex-direction: column; gap: 1px; padding: 2px 4px; }
+.bench-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bench-form { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--bg-panel); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.bench-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+.bench-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bench-field.wide { grid-column: 1 / -1; }
+.bench-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.bench-help { font-size: 11px; color: var(--text-3); }
+.bench-field .inp { width: 100%; }
+.bench-field .inp.num { font-variant-numeric: tabular-nums; }
+.row-warn { font-size: 11px; color: var(--warn-ink, #a86b00); }
+.bench-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.bench-group { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bench-group legend { font-weight: 600; font-size: 12.5px; padding: 0 4px; }
+.bench-subtitle { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.route-rows { display: flex; flex-direction: column; gap: 6px; }
+.route-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 16px minmax(0, 1fr) 28px; gap: 8px; align-items: center; }
+.route-head { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.bench-note { display: flex; gap: 6px; align-items: center; margin: 0; }
+@media (max-width: 1100px) { .bench-columns, .bench-formats { grid-template-columns: 1fr; } }
