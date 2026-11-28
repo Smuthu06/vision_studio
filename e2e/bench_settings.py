@@ -69,6 +69,25 @@ with sync_playwright() as p:
     page.wait_for_timeout(200)
     page.screenshot(path=f"{OUT}/settings_debayer.png")
 
+    # Show help: the documentation, with the edited input's section highlighted and current values marked
+    page.locator(".bench-form-head .btn", has_text="Show help").click()
+    page.wait_for_selector(".debayer-help")
+    page.locator('[aria-label="Conversion Parameter"]').focus()
+    page.wait_for_timeout(400)
+    assert page.locator(".help-sec.on h4").inner_text().startswith("Conversion Parameter")
+    assert page.locator(".help-sec.on tr.on").inner_text().replace("\t", " ").startswith("2 BT709_FULL_RANGE"), page.locator(".help-sec.on tr.on").inner_text()
+    page.locator('[aria-label="Input Format bit depth per channel"]').focus()
+    page.wait_for_timeout(400)
+    assert "bit depth ≤ data size × 8" in page.locator(".help-sec.on").inner_text()
+    page.locator('[aria-label="Input Format image format parameter"]').focus()
+    page.wait_for_timeout(500)
+    sec = page.locator(".help-sec.on")
+    assert "YUV_FORMAT_422_YUYV" in sec.locator("tr.on").first.inner_text()
+    page.screenshot(path=f"{OUT}/settings_debayer_help.png")
+    assert page.locator(".debayer-help a", has_text="DAT file player guide").count() == 1
+    page.locator(".debayer-help .help-head .icon-btn").click()
+    assert page.locator(".debayer-help").count() == 0
+
     # ---- Apply → ui_config.json
     page.locator(".settings-foot .btn-primary", has_text="Apply").click()
     page.wait_for_selector(".settings", state="detached")
