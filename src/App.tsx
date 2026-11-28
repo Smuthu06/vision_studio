@@ -405,7 +405,7 @@ function Studio() {
   // ---- tester: load the project it refers to and list the bench folders -----------------
   const testerProject = kind === "tester" ? String(root.params.project ?? "") : null;
   const loadTesterContext = useCallback(async (projectFile: string) => {
-    const [pl, bl, dl] = await Promise.all([refreshFolder("project"), refreshFolder("bitfile"), refreshFolder("datalogger")]);
+    const [pl, bl, dl, il] = await Promise.all([refreshFolder("project"), refreshFolder("bitfile"), refreshFolder("datalogger"), refreshFolder("i2c")]);
     const names = (l: ProjectListing | null) => (l ? l.files.map((f) => f.name) : null);
     let project: TesterContext["project"] = null;
     if (projectFile) {
@@ -419,8 +419,8 @@ function Studio() {
       } catch (e) { project = { name: projectFile, root: null, error: (e as Error).message }; }
     }
     setTesterCtx({
-      projectFiles: pl ? names(pl) : [SAMPLE_NAME], project, bitfiles: names(bl), dataloggers: names(dl),
-      dirs: { project: pl?.dir, bitfile: bl?.dir, datalogger: dl?.dir },
+      projectFiles: pl ? names(pl) : [SAMPLE_NAME], project, bitfiles: names(bl), dataloggers: names(dl), i2cFiles: names(il),
+      dirs: { project: pl?.dir, bitfile: bl?.dir, datalogger: dl?.dir, i2c: il?.dir },
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {

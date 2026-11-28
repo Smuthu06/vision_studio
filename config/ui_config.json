@@ -130,5 +130,27 @@
       "value": "Default",
       "description": "Board defaults as shipped"
     }
+  ],
+  "debayerConfigs": [
+    {
+      "value": "Off",
+      "description": "No debayering (raw data)"
+    },
+    {
+      "value": "RGGB",
+      "description": "Bayer pattern R G / G B"
+    },
+    {
+      "value": "GRBG",
+      "description": "Bayer pattern G R / B G"
+    },
+    {
+      "value": "GBRG",
+      "description": "Bayer pattern G B / R G"
+    },
+    {
+      "value": "BGGR",
+      "description": "Bayer pattern B G / G R"
+    }
   ]
 }

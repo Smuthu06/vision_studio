@@ -62,6 +62,9 @@ jobs:
           New-Item -ItemType Directory -Force fpga_bitfile | Out-Null
           Set-Content fpga_bitfile\FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx "x"
           $bits = Invoke-RestMethod "http://127.0.0.1:18080/api/files/bitfile"
+          New-Item -ItemType Directory -Force configurations\i2c_configuration | Out-Null
+          Set-Content configurations\i2c_configuration\front_init.txt "0x40 0x01"
+          $i2c = Invoke-RestMethod "http://127.0.0.1:18080/api/files/i2c"
           try { Invoke-RestMethod "http://127.0.0.1:18080/api/files/bitfile/x.lvbitx" -Method Put -Body $cfg -ContentType "application/json" -Headers @{ "X-Vision-Studio" = "1" }; $bitWritable = $true }
           catch { $bitWritable = $false }
           $tst = @{ text = '{"tester":{"testerName":"HIL","version":"V.1.0.0","project":"sample_v1.0.0.json","modes":[]}}' } | ConvertTo-Json
@@ -69,6 +72,7 @@ jobs:
           Stop-Process -Id $p.Id -Force
           if ($bits.files.name -notcontains "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx") { throw "bit file folder not listed" }
           if ($bitWritable) { throw "the bit file folder must be read-only" }
+          if ($i2c.files.name -notcontains "front_init.txt") { throw "I2C configuration folder not listed" }
           if (-not (Test-Path "configurations\tester_configuration\HIL_v1.0.0.json")) { throw "tester configuration not saved ($($tsaved.path))" }
           Write-Host "tester folders ok ($($tsaved.path))"
           $expected = Join-Path (Resolve-Path ".") "configurations\project_configuration\sample_v1.0.0.json"

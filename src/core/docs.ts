@@ -49,7 +49,15 @@ export const NODE_DOCS: Record<NodeType, string> = {
   testerMode:
     "One mode of the selected project in which the bench runs (for example CaptureMode). Right-click to add the camera models tested in this mode. Multiple Display is offered when the project enables EMCfeature.",
   testerCamera:
-    "One camera model of the project as connected on this bench: which FPGA device (and resource) it uses, the bit file loaded into the FPGA, the datalogger configuration, the board defaults, and the bench channels (SI0–SI7, SO0–SO7) it occupies.",
+    "One camera model of the project as connected on this bench: which FPGA device (and resource) it uses, the bit file loaded into the FPGA, the datalogger configuration and the board defaults. Right-click to add the bench channels (SI0–SI7, SO0–SO7) it uses.",
+  testerChannel:
+    "A bench channel used by the camera model: SI0–SI7 are the deserializer inputs (camera → bench), SO0–SO7 the serializer outputs (bench → ECU). Every channel has an I2C worker; right-click to add the virtual channels it carries.",
+  i2cWorker:
+    "Reads the I2C traffic of the channel while the bench runs – either monitoring only, or monitoring and checking the values – and pauses between cycles for the given time. Every channel has one.",
+  testerVc:
+    "A virtual channel of the project camera model carried on this bench channel, with its debayer setting. Every virtual channel has a frame analysis worker.",
+  frameAnalysisWorker:
+    "Analyses the frames of the virtual channel while the bench runs. Its settings will be added here.",
 };
 
 // --------------------------------------------------------------------------
@@ -229,6 +237,23 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
     dataloggerConfiguration: { doc: "Datalogger configuration used for this camera. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI).", example: "datalogger_front.json" },
     fpgaBoardDefaults: { doc: "Set of FPGA board defaults applied when the device is opened. The list is maintained in File › Settings › FPGA board defaults.", example: "Default" },
   },
+  testerChannel: {
+    channel: { doc: "Bench channel: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). Each channel can be used once per camera model.", example: "SI0" },
+    name: { doc: "Name of the signal on this channel; shown in the tree.", example: "Front" },
+    pocMode: { doc: "Power over Coax: the bench supplies the camera over the coax cable of this channel.", example: "Enabled" },
+    streamingMode: { doc: "Streams the image data received on this channel.", example: "Enabled" },
+    i2cInitFile: { doc: "I2C initialisation script written to the camera when the channel starts. The list shows the .txt files in the i2c_configuration folder (i2c_dir in the INI).", example: "front_init.txt" },
+  },
+  i2cWorker: {
+    option: { doc: "Monitoring: read and log the I2C values. Monitoring and Checking: also compare them with the expected values and report deviations.", example: "Monitoring and Checking" },
+    pauseTime: { doc: "Pause between two I2C read cycles, in milliseconds.", example: "100" },
+  },
+  testerVc: {
+    virtualChannel: { doc: "Virtual channel of the camera model as defined in the selected project (Frame Information). The list shows its number and name.", example: "0 – Front" },
+    name: { doc: "Name of this virtual channel on the bench; shown in the tree.", example: "Front_VC0" },
+    debayer: { doc: "Debayer setting for the image data of this virtual channel. The list is maintained in File › Settings › Debayer configurations.", example: "RGGB" },
+  },
+  frameAnalysisWorker: {},
 };
 
 // --------------------------------------------------------------------------
@@ -423,6 +448,10 @@ export function jsonPathOf(node: CNode, idx: TreeIndex): string {
     case "tester": return "tester";
     case "testerMode": return `tester.modes[${indexIn(parent!)}]`;
     case "testerCamera": return `${jsonPathOf(parent!, idx)}.cameraModels[${indexIn(parent!)}]`;
+    case "testerChannel": return `${jsonPathOf(parent!, idx)}.channels[${indexIn(parent!)}]`;
+    case "i2cWorker": return `${jsonPathOf(parent!, idx)}.i2cWorker`;
+    case "testerVc": return `${jsonPathOf(parent!, idx)}.virtualChannels[${indexIn(parent!)}]`;
+    case "frameAnalysisWorker": return `${jsonPathOf(parent!, idx)}.frameAnalysisWorker`;
   }
 }
 

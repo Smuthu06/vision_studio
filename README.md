@@ -87,6 +87,7 @@ project_dir = ../../configurations/project_configuration   ; where Save writes p
 tester_dir = ../../configurations/tester_configuration     ; where Save writes tester configurations
 bitfile_dir = ../../fpga_bitfile                           ; *.lvbitx offered as Bit File (read only)
 datalogger_dir = ../../datalogger_configuration            ; *.json offered as Datalogger Configuration (read only)
+i2c_dir = ../../configurations/i2c_configuration           ; *.txt offered as I2C Initialisation File (read only)
 
 [desktop]
 width = 1440
@@ -141,8 +142,22 @@ A second kind of configuration describes the test bench used for a project. **Fi
 | Datalogger Configuration | `*.json` in `datalogger_dir` (optional) |
 | FPGA Board Defaults | Settings › FPGA board defaults (`ui_config.json`) |
 
-   Below the inputs, a **Channels** table holds the channels (SI0–SI7, SO0–SO7) and their names.
-   Each channel can be used once per camera model.
+5. **Right-click a camera model › Add Channel.** This adds a channel node (the next free
+   channel of SI0–SI7, SO0–SO7) that always comes with an **I2C Worker** node. Each channel can
+   be used once per camera model.
+
+| Node | Inputs |
+| --- | --- |
+| Channel | Channel (SI0–SI7, SO0–SO7), Channel Name, PoC Mode, Streaming Mode, I2C Initialisation File (`*.txt` in `i2c_dir`, optional) |
+| I2C Worker | Option (Monitoring / Monitoring and Checking), Pause Time (ms) |
+| Virtual Channel | Virtual Channel (from the camera model's Frame Information in the project), Name, Debayer Configuration (Settings › Debayer configurations) |
+| Frame Analysis Worker | none yet |
+
+6. **Right-click a channel › Add Virtual Channel.** This adds a virtual channel node, which
+   always comes with a **Frame Analysis Worker** node. Each virtual channel can be used once per
+   channel.
+
+Neither worker can be deleted on its own; deleting the channel or virtual channel removes it.
 
 The lists from the project and the folders are re-read when the window gets focus, so files
 copied in while Vision Studio is open show up. A value that is no longer offered is reported,
@@ -164,7 +179,11 @@ projects. The file looks like this:
         "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487", "fpgaDevice": "PXIe-1487",
         "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
         "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "Default",
-        "channels": [{ "channel": "SI0", "name": "Front" }, { "channel": "SO1", "name": "ECU" }]
+        "channels": [{
+          "channel": "SI0", "name": "Front", "pocMode": true, "streamingMode": false, "i2cInitFile": "front_init.txt",
+          "i2cWorker": { "option": "Monitoring and Checking", "pauseTime": 250 },
+          "virtualChannels": [{ "virtualChannel": 0, "name": "Front_VC0", "debayer": "RGGB", "frameAnalysisWorker": {} }]
+        }]
       }]
     }]
   }

@@ -24,6 +24,7 @@ export interface Catalog {
   dataTypes: CatalogOption[];
   fpgaDevices: CatalogOption[];      // tester camera › FPGA Device
   boardDefaults: CatalogOption[];    // tester camera › FPGA Board Defaults
+  debayerConfigs: CatalogOption[];   // tester virtual channel › Debayer Configuration
   /** Runtime only (never saved): what a tester configuration refers to. */
   ctx?: TesterContext;
 }
@@ -41,10 +42,11 @@ export interface TesterContext {
   project: { name: string; root: Node | null; error?: string } | null;
   bitfiles: string[] | null;
   dataloggers: string[] | null;
-  dirs: Partial<Record<"project" | "bitfile" | "datalogger", string>>;
+  i2cFiles?: string[] | null;
+  dirs: Partial<Record<"project" | "bitfile" | "datalogger" | "i2c", string>>;
 }
 
-export type SettingsSection = "features" | "imagers" | "serializers" | "hardware" | "imageFormats" | "dataTypes" | "fpgaDevices" | "boardDefaults";
+export type SettingsSection = "features" | "imagers" | "serializers" | "hardware" | "imageFormats" | "dataTypes" | "fpgaDevices" | "boardDefaults" | "debayerConfigs";
 
 export const SECTIONS: Array<{ id: SettingsSection; title: string; help: string }> = [
   { id: "features", title: "Mode features", help: "Features that can be enabled per project mode (Project Modes › Features)." },
@@ -55,6 +57,7 @@ export const SECTIONS: Array<{ id: SettingsSection; title: string; help: string 
   { id: "dataTypes", title: "Data types", help: "MIPI CSI-2 data type identifiers offered in Frame Outputs › Data ID (hex 0x00–0x3F)." },
   { id: "fpgaDevices", title: "FPGA devices", help: "Tester configuration: FPGA devices offered in Camera Model › FPGA Device." },
   { id: "boardDefaults", title: "FPGA board defaults", help: "Tester configuration: board default sets offered in Camera Model › FPGA Board Defaults." },
+  { id: "debayerConfigs", title: "Debayer configurations", help: "Tester configuration: debayer settings offered in Virtual Channel › Debayer Configuration." },
 ];
 
 /**
@@ -73,6 +76,9 @@ export const SOURCE_INFO: Record<CatalogSource, { section?: SettingsSection; lab
   dataTypes: { section: "dataTypes", label: "Data types" },
   fpgaDevices: { section: "fpgaDevices", label: "FPGA devices" },
   boardDefaults: { section: "boardDefaults", label: "FPGA board defaults" },
+  debayerConfigs: { section: "debayerConfigs", label: "Debayer configurations" },
+  projectVcs: { label: "Project virtual channels", missing: "not a virtual channel of this camera model in the project", empty: "the project defines no virtual channels for this camera model" },
+  i2cFiles: { label: "I2C initialisation files", missing: "not found in the i2c_configuration folder", empty: "there are no .txt files in the i2c_configuration folder" },
   projectFiles: { label: "Project configurations", missing: "not found in the project configuration folder", empty: "no project configuration is saved yet" },
   projectModes: { label: "Project modes", missing: "not a mode of the selected project", empty: "the selected project has no modes" },
   projectCameras: { label: "Project camera models", missing: "not a camera model of the selected project", empty: "the selected project has no camera models" },
@@ -131,6 +137,13 @@ export function defaultCatalog(): Catalog {
       { value: "PXIe-1489", description: "Kintex UltraScale KU11P" },
     ],
     boardDefaults: [{ value: "Default", description: "Board defaults as shipped" }],
+    debayerConfigs: [
+      { value: "Off", description: "No debayering (raw data)" },
+      { value: "RGGB", description: "Bayer pattern R G / G B" },
+      { value: "GRBG", description: "Bayer pattern G R / B G" },
+      { value: "GBRG", description: "Bayer pattern G B / R G" },
+      { value: "BGGR", description: "Bayer pattern B G / G R" },
+    ],
   };
 }
 
@@ -209,6 +222,7 @@ export function normalizeCatalog(raw: Json): { catalog: Catalog; warnings: strin
     dataTypes: pick("dataTypes", () => options(raw.dataTypes, "dataTypes", warnings, true)),
     fpgaDevices: pick("fpgaDevices", () => options(raw.fpgaDevices, "fpgaDevices", warnings)),
     boardDefaults: pick("boardDefaults", () => options(raw.boardDefaults, "boardDefaults", warnings)),
+    debayerConfigs: pick("debayerConfigs", () => options(raw.debayerConfigs, "debayerConfigs", warnings)),
   };
   // older ui_config.json files: add built-in features that are missing (keep the file's spelling otherwise)
   for (const b of BUILT_IN_FEATURES) if (!catalog.features.some((f) => f.value.toLowerCase() === b.value.toLowerCase())) catalog.features.push({ ...b });
@@ -277,6 +291,7 @@ export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {})
     }
     case "fpgaDevices": return fromOpts(c.fpgaDevices ?? [], true);
     case "boardDefaults": return fromOpts(c.boardDefaults ?? [], true);
+    case "debayerConfigs": return fromOpts(c.debayerConfigs ?? [], true);
   }
   // tester: the project JSON and the bench folders
   const ctx = c.ctx;
@@ -286,6 +301,7 @@ export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {})
     case "projectFiles": return list(ctx?.projectFiles);
     case "bitfiles": return list(ctx?.bitfiles);
     case "dataloggers": return list(ctx?.dataloggers);
+    case "i2cFiles": return list(ctx?.i2cFiles);
   }
   const project = ctx?.project?.root;
   if (!project) return unknown;
@@ -294,6 +310,14 @@ export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {})
     case "projectCameras": return plain(uniq((childOf(project, "cameras")?.children ?? []).map((x) => String(x.params.model ?? "")).filter(Boolean)));
     case "projectManufacturers":
       return plain(uniq(projectHardware(project, record.cameraModel, record.$mode).map((h) => String(h.manufacture ?? "")).filter(Boolean)));
+    case "projectVcs": { // virtual channels of the camera model the channel belongs to: value = VC number, label = name
+      const cam = childOf(project, "cameras")?.children.find((x) => x.params.model === record.$cameraModel);
+      const vcs = childOf(cam, "frames")?.children ?? [];
+      const values = vcs.map((v) => String(v.params.virtualChannelNumber ?? "")).filter((v) => v !== "");
+      const labels: Record<string, string> = {};
+      for (const v of vcs) labels[String(v.params.virtualChannelNumber)] = String(v.params.virtualChannelName || `VC${v.params.virtualChannelNumber}`);
+      return { values: uniq(values), labels };
+    }
     case "projectDeviceModels":
       return plain(uniq(projectHardware(project, record.cameraModel, record.$mode)
         .filter((h) => !record.deviceManufacturer || h.manufacture === record.deviceManufacturer)
@@ -307,6 +331,8 @@ export function resolveSpec(spec: FieldSpec, c: Catalog, record: Json = {}): Fie
   if (!spec.source) return spec;
   const { values, labels, unknown } = optionsFor(spec.source, c, record);
   if (unknown) return { ...spec, strict: false, pattern: undefined }; // list not available: free text
+  if (spec.kind === "int") // numeric values (e.g. virtual channel numbers): numbered dropdown
+    return { ...spec, kind: "intenum", intOptions: values.map((v) => [Number(v), labels[v] ?? v] as [number, string]), pattern: undefined };
   return { ...spec, kind: spec.kind === "multi" ? "multi" : "enum", options: values, optionLabels: labels, pattern: undefined };
 }
 
@@ -319,7 +345,7 @@ export function inCatalog(spec: FieldSpec, c: Catalog, record: Json, value: Json
     const h = normHex(value);
     return h !== null && values.includes(h);
   }
-  return values.includes(value);
+  return values.includes(typeof value === "number" ? String(value) : value);
 }
 
 /**
@@ -388,6 +414,7 @@ export function catalogUsage(root: Node): Map<string, number> {
       if (p.fpgaDevice) add(usageKey("fpgaDevices", p.fpgaDevice));
       if (p.fpgaBoardDefaults) add(usageKey("boardDefaults", p.fpgaBoardDefaults));
     }
+    if (n.type === "testerVc" && p.debayer) add(usageKey("debayerConfigs", p.debayer));
     if (n.type === "vc" && Array.isArray(p.frameOutput)) {
       for (const o of p.frameOutput) {
         if (o?.dataFormat) add(usageKey("imageFormats", o.dataFormat));
@@ -411,7 +438,7 @@ export function applyRenames(root: Node, renames: Rename[]): number {
   let changed = 0;
   const set = (obj: Json, key: string, r: Rename) => { if (obj[key] === r.from) { obj[key] = r.to; changed++; } };
   // hardware: match on original names first, rename manufacturer last
-  const order: CatalogSource[] = ["hwSerializers", "hwDeserializers", "models", "manufacturers", "features", "imagers", "serializers", "imageFormats", "dataTypes", "fpgaDevices", "boardDefaults"];
+  const order: CatalogSource[] = ["hwSerializers", "hwDeserializers", "models", "manufacturers", "features", "imagers", "serializers", "imageFormats", "dataTypes", "fpgaDevices", "boardDefaults", "debayerConfigs"];
   const sorted = [...renames].sort((a, b) => order.indexOf(a.source) - order.indexOf(b.source));
   for (const r of sorted) {
     for (const n of walkNodes(root)) {
@@ -423,6 +450,7 @@ export function applyRenames(root: Node, renames: Rename[]): number {
         case "imagers": if (n.type === "camera") set(p, "imager", r); break;
         case "fpgaDevices": if (n.type === "testerCamera") set(p, "fpgaDevice", r); break;
         case "boardDefaults": if (n.type === "testerCamera") set(p, "fpgaBoardDefaults", r); break;
+        case "debayerConfigs": if (n.type === "testerVc") set(p, "debayer", r); break;
         case "serializers": if (n.type === "camera") set(p, "serializer", r); break;
         case "imageFormats":
           if (n.type === "camera") set(p, "packetFormat", r);

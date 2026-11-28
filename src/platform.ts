@@ -249,7 +249,7 @@ export async function saveUiConfig(state: UiConfigState, text: string): Promise<
 //   desktop: the native app reads and writes them; server: web mode (local API);
 //   browser: no backend (dev server, static hosting) – Save downloads the file
 // ---------------------------------------------------------------------------
-export type FolderKind = "project" | "tester" | "bitfile" | "datalogger";
+export type FolderKind = "project" | "tester" | "bitfile" | "datalogger" | "i2c";
 export interface ProjectEntry { name: string; modified: number | null; size: number }
 export interface ProjectListing {
   backend: "desktop" | "server";

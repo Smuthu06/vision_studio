@@ -47,6 +47,11 @@ Tester configurations
   and Datalogger Configuration lists *.json in datalogger_dir
   (../../datalogger_configuration). FPGA devices and FPGA board defaults are
   lists in File > Settings.
+  Right-click a camera model to add channels (each comes with an I2C worker)
+  and a channel to add virtual channels (each with a frame analysis worker).
+  I2C Initialisation File lists *.txt in i2c_dir
+  (../../configurations/i2c_configuration). Debayer configurations are a
+  list in File > Settings.
 
 Requirements
   Windows 10 or 11 (64-bit). Desktop mode uses Microsoft Edge WebView2, which is

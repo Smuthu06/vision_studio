@@ -2,7 +2,7 @@
 
 Bench layout (see README): <bench>/tools/vision_studio/<exe + ini>, <bench>/configurations/
 project_configuration/{sample_v1.0.0.json (EMCfeature on), noemc_v1.0.0.json}, <bench>/fpga_bitfile/*.lvbitx,
-<bench>/datalogger_configuration/*.json.
+<bench>/datalogger_configuration/*.json, <bench>/configurations/i2c_configuration/*.txt.
 
 Usage: python e2e/tester.py http://127.0.0.1:8766/ /path/to/bench
 """
@@ -97,17 +97,49 @@ with sync_playwright() as p:
     page.keyboard.press("Tab")
     assert page.locator(".tree-row", has_text="Front_Left").count() == 1, "custom name is shown in the tree"
 
-    # channels SI0–SI7 / SO0–SO7
-    add = page.locator(".btn", has_text="Add Channel").first
-    add.click(); add.click()
-    sel0 = page.locator("#c-channels-0-channel")
-    chans = options(sel0)
-    assert chans[:16] == [f"SI{i}" for i in range(8)] + [f"SO{i}" for i in range(8)], chans
-    page.fill("#c-channels-0-name", "Front")
-    page.select_option("#c-channels-1-channel", label="SO1")
-    page.fill("#c-channels-1-name", "ECU")
+    # right-click camera › Add Channel: a channel node with its I2C worker
+    node_menu(page, "Front_Left", "Add Channel")
+    page.wait_for_selector(".tree-row:has-text('I2C Worker')")
+    page.locator(".tree-row", has_text="SI0").first.click()
+    chans = options(field(page, "Channel"))
+    assert chans == [f"SI{i}" for i in range(8)] + [f"SO{i}" for i in range(8)], chans
+    field(page, "Channel Name").fill("Front")
+    page.locator(".form-row", has=page.locator(".form-label", has_text="PoC Mode")).locator(".switch").click()
+    assert "front_init.txt" in options(field(page, "I2C Initialisation File"))
+    field(page, "I2C Initialisation File").select_option(label="front_init.txt")
+    page.keyboard.press("Tab")
+    assert page.locator(".tree-row", has_text="SI0 – Front").count() == 1
+
+    # I2C worker: option + pause time
+    page.locator(".tree-row", has_text="I2C Worker").first.click()
+    assert options(field(page, "Option")) == ["Monitoring", "Monitoring and Checking"]
+    field(page, "Option").select_option(label="Monitoring and Checking")
+    field(page, "Pause Time").fill("250")
     page.keyboard.press("Tab")
 
+    # right-click channel › Add Virtual Channel: VC from the project, with its frame analysis worker
+    node_menu(page, "SI0 – Front", "Add Virtual Channel")
+    page.wait_for_selector(".tree-row:has-text('Frame Analysis Worker')")
+    page.locator(".tree-row", has_text="VC0").first.click()
+    assert options(field(page, "Virtual Channel")) == ["0 – Front"], options(field(page, "Virtual Channel"))
+    assert "RGGB – Bayer pattern R G / G B" in options(field(page, "Debayer Configuration"))
+    field(page, "Debayer Configuration").select_option(label="RGGB – Bayer pattern R G / G B")
+    field(page, "Name").fill("Front_VC0")
+    page.keyboard.press("Tab")
+    page.screenshot(path=f"{OUT}/tester_vc.png")
+
+    # a second channel: next free one, changed to SO1
+    node_menu(page, "Front_Left", "Add Channel")
+    page.locator(".tree-row", has_text="SI1").first.click()
+    field(page, "Channel").select_option(label="SO1")
+    field(page, "Channel Name").fill("ECU")
+    page.keyboard.press("Tab")
+    node_menu(page, "SO1 – ECU", "Add Virtual Channel")
+    page.locator(".tree-row", has_text="SI0 – Front").first.click()
+    page.wait_for_timeout(200)
+    page.screenshot(path=f"{OUT}/tester_channel.png")
+
+    page.locator(".tree-row", has_text="Front_Left").first.click()
     # wrong bit file for the device → warning after Validate
     page.keyboard.press("F5")
     page.wait_for_timeout(300)
@@ -136,7 +168,14 @@ with sync_playwright() as p:
         "cameraModel": "ADAS_Camera_Model_A", "name": "Front_Left", "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487",
         "fpgaDevice": "PXIe-1487", "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
         "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "Default",
-        "channels": [{"channel": "SI0", "name": "Front"}, {"channel": "SO1", "name": "ECU"}],
+        "channels": [
+            {"channel": "SI0", "name": "Front", "pocMode": True, "streamingMode": False, "i2cInitFile": "front_init.txt",
+             "i2cWorker": {"option": "Monitoring and Checking", "pauseTime": 250},
+             "virtualChannels": [{"virtualChannel": 0, "name": "Front_VC0", "debayer": "RGGB", "frameAnalysisWorker": {}}]},
+            {"channel": "SO1", "name": "ECU", "pocMode": False, "streamingMode": False, "i2cInitFile": "",
+             "i2cWorker": {"option": "Monitoring", "pauseTime": 100},
+             "virtualChannels": [{"virtualChannel": 0, "name": "Front", "debayer": "Off", "frameAnalysisWorker": {}}]},
+        ],
     }, cam
 
     # Open › Tester lists the tester folder

@@ -33,6 +33,7 @@ pub struct Config {
     pub tester_dir: String,
     pub bitfile_dir: String,
     pub datalogger_dir: String,
+    pub i2c_dir: String,
     /// The INI file that was used (None = built-in defaults).
     pub source: Option<PathBuf>,
     /// Problems found while reading the file / arguments (shown to the user).
@@ -43,6 +44,7 @@ pub const DEFAULT_PROJECT_DIR: &str = "../../configurations/project_configuratio
 pub const DEFAULT_TESTER_DIR: &str = "../../configurations/tester_configuration";
 pub const DEFAULT_BITFILE_DIR: &str = "../../fpga_bitfile";
 pub const DEFAULT_DATALOGGER_DIR: &str = "../../datalogger_configuration";
+pub const DEFAULT_I2C_DIR: &str = "../../configurations/i2c_configuration";
 pub const MIN_WIDTH: f64 = 980.0;
 pub const MIN_HEIGHT: f64 = 620.0;
 
@@ -61,6 +63,7 @@ impl Default for Config {
             tester_dir: DEFAULT_TESTER_DIR.into(),
             bitfile_dir: DEFAULT_BITFILE_DIR.into(),
             datalogger_dir: DEFAULT_DATALOGGER_DIR.into(),
+            i2c_dir: DEFAULT_I2C_DIR.into(),
             source: None,
             warnings: Vec::new(),
         }
@@ -135,12 +138,12 @@ impl Config {
             ("app", "ui_config") => {
                 if value.is_empty() { self.warnings.push(bad("ui_config path")); } else { self.ui_config = value.to_string(); }
             }
-            ("app", "project_dir") | ("app", "tester_dir") | ("app", "bitfile_dir") | ("app", "datalogger_dir") => {
+            ("app", "project_dir") | ("app", "tester_dir") | ("app", "bitfile_dir") | ("app", "datalogger_dir") | ("app", "i2c_dir") => {
                 if value.is_empty() {
                     self.warnings.push(bad(&format!("{key} path")));
                 } else {
                     let v = value.to_string();
-                    match key { "project_dir" => self.project_dir = v, "tester_dir" => self.tester_dir = v, "bitfile_dir" => self.bitfile_dir = v, _ => self.datalogger_dir = v }
+                    match key { "project_dir" => self.project_dir = v, "tester_dir" => self.tester_dir = v, "bitfile_dir" => self.bitfile_dir = v, "i2c_dir" => self.i2c_dir = v, _ => self.datalogger_dir = v }
                 }
             }
             ("desktop", "width") => match value.parse::<f64>() {
@@ -225,6 +228,7 @@ impl Config {
             tester: ProjectDir::new(p(&self.tester_dir)),
             bitfile: ProjectDir::read_only(p(&self.bitfile_dir), ".lvbitx"),
             datalogger: ProjectDir::read_only(p(&self.datalogger_dir), ".json"),
+            i2c: ProjectDir::read_only(p(&self.i2c_dir), ".txt"),
         }
     }
 
@@ -378,7 +382,8 @@ mod tests {
         c.source = Some(PathBuf::from("/opt/vs/VisionStudio.ini"));
         assert_eq!(c.ui_config_path(), PathBuf::from("/opt/vs/lists/ui.json"));
         assert_eq!(c.project_dir_path(), PathBuf::from("/opt/vs/../../configurations/project_configuration"));
-        c.apply_ini("[app]\nproject_dir = D:/bench/projects\ntester_dir = T\nbitfile_dir = B\ndatalogger_dir = L\n", "t.ini");
+        c.apply_ini("[app]\nproject_dir = D:/bench/projects\ntester_dir = T\nbitfile_dir = B\ndatalogger_dir = L\ni2c_dir = I\n", "t.ini");
+        assert_eq!(c.i2c_dir, "I");
         assert_eq!((c.tester_dir.as_str(), c.bitfile_dir.as_str(), c.datalogger_dir.as_str()), ("T", "B", "L"));
         assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     }

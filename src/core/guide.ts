@@ -43,10 +43,15 @@ function computeTesterSteps(root: CNode, issues: Issue[], idx: TreeIndex): Build
       ? { id: "cameras", title: "Camera models", status: "todo", detail: `Add a camera model to ${empty.params.mode || "the mode"}`, action: { kind: "add", parentId: empty.id, type: "testerCamera" } }
       : { id: "cameras", title: "Camera models", status: badCam ? "attention" : "done",
         detail: badCam ? `Complete ${DEFS.testerCamera.label!(badCam)}` : `${cams.length} camera model(s)`, action: { kind: "select", nodeId: (badCam ?? cams[0]).id } });
-    const noCh = cams.find((c) => !(Array.isArray(c.params.channels) && c.params.channels.length));
+    const noCh = cams.find((c) => !c.children.length);
     if (cams.length) steps.push(noCh
-      ? { id: "channels", title: "Channels", status: "todo", detail: `Add channels to ${DEFS.testerCamera.label!(noCh)}`, action: { kind: "select", nodeId: noCh.id } }
-      : { id: "channels", title: "Channels", status: "done", detail: `${cams.reduce((a, c) => a + c.params.channels.length, 0)} channel(s)` });
+      ? { id: "channels", title: "Channels", status: "todo", detail: `Right-click ${DEFS.testerCamera.label!(noCh)} to add a channel`, action: { kind: "add", parentId: noCh.id, type: "testerChannel" } }
+      : { id: "channels", title: "Channels", status: "done", detail: `${cams.reduce((a, c) => a + c.children.length, 0)} channel(s)` });
+    const chans = cams.flatMap((c) => c.children);
+    const noVc = chans.find((c) => !c.children.some((x) => x.type === "testerVc"));
+    if (chans.length) steps.push(noVc
+      ? { id: "vcs", title: "Virtual channels", status: "todo", detail: `Right-click ${DEFS.testerChannel.label!(noVc)} to add a virtual channel`, action: { kind: "add", parentId: noVc.id, type: "testerVc" } }
+      : { id: "vcs", title: "Virtual channels", status: "done", detail: `${chans.reduce((a, c) => a + c.children.filter((x) => x.type === "testerVc").length, 0)} virtual channel(s)` });
   }
   const nErr = issues.filter((i) => i.severity === "error").length;
   steps.push({ id: "validate", title: "Validate & export", status: nErr ? "attention" : (steps.every((s) => s.status !== "todo") ? "done" : "todo"),

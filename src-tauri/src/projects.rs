@@ -6,6 +6,7 @@
 //! | `tester`     | `tester_dir`     | `*.json`  | yes – `<tester>_v<version>.json`  |
 //! | `bitfile`    | `bitfile_dir`    | `*.lvbitx`| no (listed for the Bit File dropdown) |
 //! | `datalogger` | `datalogger_dir` | `*.json`  | no (listed for the Datalogger dropdown) |
+//! | `i2c`        | `i2c_dir`        | `*.txt`   | no (listed for the I2C Initialisation File dropdown) |
 //!
 //! Only plain file names inside a folder are accepted, so the API can never
 //! read or write anywhere else. Writes are atomic, and an existing file is
@@ -75,6 +76,7 @@ pub struct Folders {
     pub tester: ProjectDir,
     pub bitfile: ProjectDir,
     pub datalogger: ProjectDir,
+    pub i2c: ProjectDir,
 }
 
 impl Folders {
@@ -84,6 +86,7 @@ impl Folders {
             "tester" => Ok(&self.tester),
             "bitfile" => Ok(&self.bitfile),
             "datalogger" => Ok(&self.datalogger),
+            "i2c" => Ok(&self.i2c),
             _ => Err(FileError::new("invalid", format!("Unknown folder '{kind}'"))),
         }
     }
