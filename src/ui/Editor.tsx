@@ -9,6 +9,8 @@ import type { Recipe } from "../state/store";
 import { cascadeHardware, cascadeTesterCamera, resolveSpec, type Catalog } from "../core/catalog";
 import { bitFileDeviceMode, featureEnabled, fieldsInMode, findChild, optionRecord } from "../core/model";
 import { FEATURE_EMC } from "../core/schema";
+import { i2cCheckingMonitoring } from "../core/ctpTester";
+import { DEFS } from "../core/model";
 
 /** Table spec with its catalog-backed columns turned into dropdowns. */
 const resolvedTable = (t: TableSpec, c: Catalog): TableSpec =>
@@ -38,6 +40,7 @@ type RowsFor = (path: (string | number)[]) => (fn: (rows: Json[]) => void, opts?
 const SECTION_REGISTRY: Partial<Record<NodeType, SectionRenderer>> = {
   hwPassthrough: (p) => <PassthroughSection {...p} />,
   vc: (p) => <VirtualChannelSection {...p} />,
+  i2cWorker: (p) => <I2cCheckingSection {...p} />,
 };
 
 export function Editor(props: EditorProps) {
@@ -329,5 +332,43 @@ function VirtualChannelSection({ node, issues, rowsFor, focus, catalog }: Editor
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * I2C Worker: with "Monitoring & Checking" the worker checks the values against the camera model's
+ * I2C Monitoring of the project (saved as i2cCheckingConfig). Shown read-only – it is edited in the project.
+ */
+function I2cCheckingSection({ node, idx, catalog }: EditorProps & { rowsFor: RowsFor }) {
+  const [tab, setTab] = useState(0);
+  const { checking, monitoring, cameraModel } = i2cCheckingMonitoring(node, idx, catalog);
+  if (!checking) return null;
+  const tables = DEFS.monitoring.tables!;
+  const t = tables[Math.min(tab, tables.length - 1)];
+  const project = catalog.ctx?.project;
+  return (
+    <section className="card card-flush" data-testid="i2c-checking-config">
+      <div className="card-title-row" style={{ padding: "12px 16px 0" }}>
+        <h3 className="card-title">I2C Checking Config</h3>
+        <span className="muted">From the project's I2C Monitoring of {cameraModel ? `'${cameraModel}'` : "the camera model"} · edit it in the project</span>
+      </div>
+      {!project?.root ? (
+        <p className="muted" style={{ padding: "8px 16px 16px" }}>The project of this tester is not loaded, so its I2C Monitoring can't be shown.</p>
+      ) : !monitoring ? (
+        <p className="muted" style={{ padding: "8px 16px 16px" }}>The camera model has no I2C Monitoring in the project. Add it there to define what is checked.</p>
+      ) : (
+        <>
+          <div className="tabs" role="tablist">
+            {tables.map((s, i) => (
+              <button key={s.key} role="tab" aria-selected={i === tab} className={`tab ${i === tab ? "active" : ""}`} onClick={() => setTab(i)}>
+                {s.icon && <NodeIcon name={s.icon as IconName} size={16} />}{s.title}<span className="count">{(monitoring.params[s.key] ?? []).length}</span>
+              </button>
+            ))}
+          </div>
+          <DataTable key={t.key} spec={t} rows={monitoring.params[t.key]} tableId={`i2cCheck-${t.key}`} issues={[]} onRows={() => {}}
+            hideTitle readOnly disabledHint={`No ${t.itemName.toLowerCase()}s in the project.`} />
+        </>
+      )}
+    </section>
   );
 }

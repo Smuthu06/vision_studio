@@ -787,7 +787,7 @@ export const DEFS: Record<NodeType, NodeDef> = {
 
   i2cWorker: {
     type: "i2cWorker", title: "I2C Worker", icon: "ic", deletable: false,
-    description: "Worker that reads the I2C traffic of the channel while the bench runs: monitoring only, or monitoring and checking. The register, temperature and error-count monitors (i2cCheckingConfig) come from the project's I2C Monitoring of the camera model.",
+    description: "Worker that reads the I2C traffic of the channel while the bench runs: monitoring only, or monitoring and checking. With Monitoring & Checking, the register, error-count and temperature monitors of the project's I2C Monitoring of the camera model are shown here and saved as i2cCheckingConfig; with Monitoring only, i2cCheckingConfig is saved as null.",
     fields: [
       { key: "i2cWorkerMode", label: "I2C Worker Mode", kind: "enum", options: I2C_WORKER_OPTIONS, help: "Monitoring, or Monitoring & Checking" },
       { key: "pauseTime", label: "Pause Time (ms)", kind: "int", min: 0, max: 600000, help: "Pause between two I2C cycles in milliseconds" },

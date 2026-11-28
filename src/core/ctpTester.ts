@@ -15,15 +15,16 @@
  * monitoringCmd, …) in `params.$source` and writes it back unchanged; derived values fall back to
  * what the file had when the project / settings entry is not available.
  */
-import Ajv, { type ErrorObject } from "ajv";
-import schema from "../assets/tester_configuration.schema.json";
+import type { ErrorObject } from "ajv";
+// precompiled: the app's CSP forbids eval, so ajv must not compile the schema at runtime
+import validateSchema from "./testerValidator.generated.js";
 import { projectHardware, projectModeFeatures, type Catalog } from "./catalog";
 import type { BoardDefaults, DebayerConfig, PixelFormat } from "./benchDefaults";
 import { projectFileName } from "./filename";
 import {
   DEFS, findChild, mk, nodeToJson, type CNode, type ConfigDocument, type Issue,
 } from "./model";
-import { ERROR, type Json } from "./schema";
+import { ERROR, WARNING, type Json } from "./schema";
 
 export const CTP_FEATURES = ["DataLogger", "FaultInjection", "EMCFeatures"] as const;
 
@@ -198,15 +199,29 @@ export function exportCamera(c: CNode, mode: Json, x: Ctx): Json {
   return out;
 }
 
+export const I2C_CHECKING = "Monitoring & Checking";
+
+/**
+ * The I2C checking configuration of a tester I2C worker: the project's I2C Monitoring of the
+ * camera model (register / error-count / temperature monitors). Only used – and shown – when
+ * the worker mode is "Monitoring & Checking"; otherwise the file carries `null`.
+ */
+export function i2cCheckingMonitoring(w: CNode, idx: { ancestor: (n: CNode, t: never) => CNode | null }, catalog: Catalog): { checking: boolean; monitoring: CNode | undefined; cameraModel: Json } {
+  const cam = idx.ancestor(w, "testerCamera" as never);
+  const pc = cam ? makeCtx(catalog).projectCamera(cam.params.cameraModel) : undefined;
+  return { checking: w.params.i2cWorkerMode === I2C_CHECKING, monitoring: pc ? findChild(pc, "monitoring") : undefined, cameraModel: cam?.params.cameraModel };
+}
+
 function exportI2cWorker(w: CNode | undefined, pc: CNode | undefined): Json {
-  if (!w) return { i2cWorkerMode: "Monitoring", pauseTime: 100 };
+  if (!w) return { i2cWorkerMode: "Monitoring", pauseTime: 100, i2cCheckingConfig: null };
   const s = src(w);
+  const checking = w.params.i2cWorkerMode === I2C_CHECKING;
   const mon = pc ? findChild(pc, "monitoring") : undefined;
   return {
     ...s,
     i2cWorkerMode: w.params.i2cWorkerMode ?? "Monitoring",
     pauseTime: toInt(w.params.pauseTime) ?? 0,
-    i2cCheckingConfig: mon ? without(nodeToJson(mon) as Json, []) : s.i2cCheckingConfig ?? null,
+    i2cCheckingConfig: !checking ? null : mon ? nodeToJson(mon) as Json : s.i2cCheckingConfig ?? null,
   };
 }
 
@@ -317,10 +332,8 @@ function importChannel(cc: Json, pass: boolean): CNode {
 }
 
 // ---------------------------------------------------------------------------- schema check
-let validator: ReturnType<Ajv["compile"]> | null = null;
 function validate(json: Json): ErrorObject[] {
-  validator ??= new Ajv({ allErrors: true, strict: false }).compile(schema);
-  return validator(json) ? [] : [...(validator.errors ?? [])];
+  return validateSchema(json) ? [] : [...(validateSchema.errors ?? [])];
 }
 
 /**
@@ -329,6 +342,33 @@ function validate(json: Json): ErrorObject[] {
  * project root, the other channel layout, …) are left out.
  */
 export function schemaIssues(root: CNode, catalog: Catalog): Issue[] {
+  return [...i2cCheckingIssues(root, catalog), ...schemaErrors(root, catalog)];
+}
+
+/** "Monitoring & Checking" needs the project's I2C Monitoring of the camera model to check against. */
+function i2cCheckingIssues(root: CNode, catalog: Catalog): Issue[] {
+  const x = makeCtx(catalog);
+  if (!x.project) return []; // project not loaded: nothing to check against
+  const out: Issue[] = [];
+  for (const mode of root.children) for (const cam of mode.children) {
+    if (cam.type !== "testerCamera") continue;
+    const pc = x.projectCamera(cam.params.cameraModel);
+    if (!pc) continue;
+    const mon = findChild(pc, "monitoring");
+    const rows = mon ? ["register_monitor", "error_count", "temperature_monitor"].reduce((a, k) => a + (Array.isArray(mon.params[k]) ? mon.params[k].length : 0), 0) : 0;
+    for (const ch of cam.children) for (const w of ch.children) {
+      if (w.type !== "i2cWorker" || w.params.i2cWorkerMode !== I2C_CHECKING || rows) continue;
+      out.push({
+        severity: WARNING, nodeId: w.id, field: "i2cWorkerMode",
+        message: mon ? `Camera model '${cam.params.cameraModel}' has no monitors in the project's I2C Monitoring – nothing to check`
+          : `Camera model '${cam.params.cameraModel}' has no I2C Monitoring in the project – add it there to check the I2C values`,
+      });
+    }
+  }
+  return out;
+}
+
+function schemaErrors(root: CNode, catalog: Catalog): Issue[] {
   const json = exportTester(root, catalog);
   const errs = validate(json);
   if (!errs.length) return [];

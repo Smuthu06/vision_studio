@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import sample from "../assets/sample.json";
 import { cascadeTesterCamera, defaultCatalog, optionsFor, type Catalog, type TesterContext } from "../core/catalog";
 import { configFileName } from "../core/filename";
-import { exportTester, schemaIssues } from "../core/ctpTester";
+import { exportTester, i2cCheckingMonitoring, schemaIssues } from "../core/ctpTester";
 import Ajv from "ajv";
 import schema from "../assets/tester_configuration.schema.json";
 import {
@@ -98,7 +98,7 @@ describe("tester configuration (CTP cameraTester schema)", () => {
     expect(ch).toMatchObject({ channel: "SI0", channelName: "Front", pocMode: "Internal", streamingMode: "Single",
       i2cCommands: "C:\\bench\\configurations\\i2c_configuration\\front_init.txt", cybersecurity: { enable: false, lvClass: "" } });
     expect(ch.i2cWorker).toMatchObject({ i2cWorkerMode: "Monitoring", pauseTime: 100 });
-    expect(Object.keys(ch.i2cWorker.i2cCheckingConfig).sort()).toEqual(["error_count", "register_monitor", "temperature_monitor"]);
+    expect(ch.i2cWorker.i2cCheckingConfig).toBeNull(); // Monitoring only: nothing is checked
     const vc = ch.vcConfiguration[0];
     expect(vc).toMatchObject({ virtualChannel: "VC0", name: "Front", cameraDebayer: "RAW_RGGB_to_RGB", frameAnalysisWorker: ["Frame Verification"] });
     expect(vc.frameInfo).toMatchObject({ virtualChannelNumber: 0, virtualChannelName: "Front", fps: { max: 30.1, min: 29.9 } });
@@ -220,6 +220,32 @@ describe("tester configuration (CTP cameraTester schema)", () => {
     const issues = schemaIssues(doc.root, c);
     expect(issues.map((i) => i.message)).toContain('Tester schema: testModes[0].mode must be one of "CaptureMode", "PassthroughMode"');
     expect(issues.find((i) => i.message.includes("testModes[0].mode"))!.nodeId).toBe(mode.id);
+  });
+
+  it("writes i2cCheckingConfig from the project only with Monitoring & Checking", () => {
+    const c = ctx();
+    const { t, ch } = complete(c);
+    const w = ch.children.find((x) => x.type === "i2cWorker")!;
+    const idx = new TreeIndex(t);
+    expect(i2cCheckingMonitoring(w, idx, c).checking).toBe(false);
+    w.params.i2cWorkerMode = "Monitoring & Checking";
+    const info = i2cCheckingMonitoring(w, idx, c);
+    expect(info.checking).toBe(true);
+    expect(info.monitoring?.type).toBe("monitoring");
+    const out = exportTester(t, c) as any;
+    const cfg = out.cameraTester.testModes[0].cameraModels[0].channelConfiguration[0].i2cWorker.i2cCheckingConfig;
+    expect(Object.keys(cfg).sort()).toEqual(["error_count", "register_monitor", "temperature_monitor"]);
+    expect(cfg.register_monitor).toEqual(info.monitoring!.params.register_monitor);
+    expect(validate(out)).toBe(true);
+    expect(schemaIssues(t, c).filter((i) => i.nodeId === w.id)).toEqual([]);
+    // the project's camera model has no I2C Monitoring → warning on the worker, file carries null
+    const p = project();
+    const pc = findChild(p, "cameras")!.children[0];
+    pc.children = pc.children.filter((k) => k.type !== "monitoring");
+    const c2 = ctx({}, p);
+    const out2 = exportTester(t, c2) as any;
+    expect(out2.cameraTester.testModes[0].cameraModels[0].channelConfiguration[0].i2cWorker.i2cCheckingConfig).toBeNull();
+    expect(schemaIssues(t, c2).filter((i) => i.nodeId === w.id).map((i) => i.severity)).toEqual(["warning"]);
   });
 
   it("gives every channel an I2C worker and every virtual channel a frame analysis worker", () => {

@@ -10,6 +10,7 @@
     "build:single": "tsc -b && vite build --mode single",
     "preview": "vite preview",
     "test": "vitest run",
+    "gen:validator": "node scripts/gen-tester-validator.mjs",
     "typecheck": "tsc -b",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",

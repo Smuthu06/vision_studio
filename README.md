@@ -181,7 +181,7 @@ each have a *Project* and a *Tester* entry.
 | Mode | Mode, Multiple Display (`multiple_display`) |
 | Camera Model | Camera Model, Camera Model Name (`name`), Device Manufacturer (`manufacturer`), Device Model, Device Mode (8in / 4in/4out / 4in; set from the bit file name), Device Resource (e.g. `PXI1Slot2`), Bit File (`fpgaBitFile`, `*.lvbitx` in `bitfile_dir`), Datalogger Configuration (`dataloggerCommands`, `*.json` in `datalogger_dir`), FPGA Board Defaults (`fpgaBoardName`) |
 | Channel | Channel, Channel Name, PoC Mode (Internal / Auxiliary / None), Streaming Mode (Single / Continuous), I2C Commands File (`i2cCommands`, `*.txt` in `i2c_dir`); PassthroughMode adds the Output card (channel, name, PoC mode, I2C commands, SO CSI data lanes and data rate); Cybersecurity (enable, LV Class) |
-| I2C Worker | I2C Worker Mode (Monitoring / Monitoring & Checking), Pause Time (ms) |
+| I2C Worker | I2C Worker Mode (Monitoring / Monitoring & Checking), Pause Time (ms); with Monitoring & Checking the panel shows the I2C Checking Config (read-only, from the project's I2C Monitoring) |
 | Virtual Channel | Virtual Channel (from the camera model's Frame Information; written as `VC<n>`), Name, Debayer Configuration (`cameraDebayer`) |
 | Frame Analysis Worker | Frame Verification |
 
@@ -195,7 +195,7 @@ written when saving:
 | `eeprom`, `imagerAddress`, `eepromHashRegAddress`, `lenghtHash` | the project camera model, when EMCfeature is enabled |
 | `gpioRouting` | the camera model's Passthrough Hardware (PassthroughMode) |
 | `frameInfo` | the project virtual channel |
-| `i2cWorker.i2cCheckingConfig` | the project's I2C Monitoring of the camera model |
+| `i2cWorker.i2cCheckingConfig` | the project's I2C Monitoring of the camera model when the worker mode is Monitoring & Checking; `null` with Monitoring |
 | `fpgaDefaults` | Settings › FPGA board defaults (`SI_Ref_Clk_Freq_(Hz)`, `Frames_on_DMA_Buffer`, …) |
 | `debayerConfiguration` | Settings › Debayer configurations |
 | `channelInfo` | the channels |
@@ -214,8 +214,14 @@ the file are kept.
   fpga_bitfile folder".
 * A bit file built for another capture card (`…_NI1486_…`) or IO density (`FPGA_8IN_…`) gives a
   warning.
+* Monitoring & Checking on a camera model without I2C Monitoring (or with no monitors) in the
+  project gives a warning on the I2C Worker.
 * These are errors: duplicate channels, outputs or virtual channels, a non-SI input in
   PassthroughMode, and cybersecurity enabled without an LV Class.
+
+The schema check uses a validator precompiled from `src/assets/tester_configuration.schema.json`
+(the app's security policy doesn't allow compiling it at runtime). After changing the schema, run
+`npm run gen:validator`; CI fails if the generated file is out of date.
 
 To check files the way the CTP does:
 `python tools/validate_tester_configuration.py <file.json> --schema tools/tester_configuration.schema.json`.

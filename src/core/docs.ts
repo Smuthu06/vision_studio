@@ -254,7 +254,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
     lvClass: { doc: "LabVIEW class that implements the cybersecurity check; required when it is enabled.", example: "X3F(OVT)" },
   },
   i2cWorker: {
-    i2cWorkerMode: { doc: "Monitoring: read and log the I2C values. Monitoring & Checking: also compare them with the expected values. The register, temperature and error-count monitors are taken from the project's I2C Monitoring of the camera model (i2cCheckingConfig).", example: "Monitoring & Checking" },
+    i2cWorkerMode: { doc: "Monitoring: read and log the I2C values. Monitoring & Checking: also compare them with the expected values. With Monitoring & Checking the panel shows the I2C Checking Config: the register, error-count and temperature monitors of the project's I2C Monitoring of the camera model, saved as i2cCheckingConfig. With Monitoring only, i2cCheckingConfig is saved as null.", example: "Monitoring & Checking" },
     pauseTime: { doc: "Pause between two I2C read cycles, in milliseconds.", example: "100" },
   },
   testerVc: {

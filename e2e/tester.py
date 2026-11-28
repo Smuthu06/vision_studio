@@ -120,6 +120,17 @@ with sync_playwright() as p:
     # I2C worker: mode + pause time
     page.locator(".tree-row", has_text="I2C Worker").first.click()
     assert options(field(page, "I2C Worker Mode")) == ["Monitoring", "Monitoring & Checking"]
+    chk = page.locator("[data-testid=i2c-checking-config]")
+    assert chk.count() == 0, "I2C Checking Config only with Monitoring & Checking"
+    field(page, "I2C Worker Mode").select_option(label="Monitoring & Checking")
+    chk.wait_for()
+    assert chk.locator(".tab").count() == 3, chk.inner_text()
+    for t in ["Register Monitor", "Error Counters", "Temperature Monitor"]:
+        assert t in chk.inner_text(), chk.inner_text()
+    page.screenshot(path=f"{OUT}/tester_i2c_checking.png")
+    field(page, "I2C Worker Mode").select_option(label="Monitoring")
+    page.wait_for_timeout(150)
+    assert chk.count() == 0
     field(page, "I2C Worker Mode").select_option(label="Monitoring & Checking")
     field(page, "Pause Time").fill("250")
     page.keyboard.press("Tab")
@@ -192,6 +203,7 @@ with sync_playwright() as p:
     ch = cam["channelConfiguration"][0]
     assert ch["streamingMode"] == "Continuous" and ch["i2cCommands"].endswith("/configurations/i2c_configuration/front_init.txt")
     assert ch["i2cWorker"]["i2cWorkerMode"] == "Monitoring & Checking" and ch["i2cWorker"]["pauseTime"] == 250
+    assert sorted(ch["i2cWorker"]["i2cCheckingConfig"]) == ["error_count", "register_monitor", "temperature_monitor"], ch["i2cWorker"]
     vc = ch["vcConfiguration"][0]
     assert vc["virtualChannel"] == "VC0" and vc["cameraDebayer"] == "YUV422_YUYV_to_RGB" and vc["frameAnalysisWorker"] == ["Frame Verification"]
     pt = t["testModes"][1]["cameraModels"][0]
