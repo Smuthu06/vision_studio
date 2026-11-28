@@ -59,7 +59,8 @@ with sync_playwright() as p:
     assert sorted(os.listdir(DIR)) == ["sample_v1.0.0.json", "sample_v1.0.1.json"], os.listdir(DIR)
 
     # a different document with the same project + version must ask before replacing
-    page.click("#file-menu-btn"); page.locator(".menu-item", has_text="New project").click()
+    page.click("#file-menu-btn"); page.locator(".menu-item", has_text="New").first.hover()
+    page.locator(".menu .menu-label").get_by_text("Project", exact=True).click()
     field(page, "Project Name").fill("sample")
     page.keyboard.press("Tab")
     save(page, expect_modal="Replace sample_v1.0.0.json?")
@@ -79,7 +80,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/pf_open.png")
     page.locator(".open-row", has_text="sample_v1.0.0.json").dblclick()
-    page.wait_for_selector(".toast-success")
+    page.wait_for_selector(".toast:has-text('Opened sample_v1.0.0.json')")
     assert field(page, "Author").input_value() == "engineer"
     assert field(page, "Version").input_value() == "V.1.0.0"
     assert page.locator(".file-chip").inner_text().strip() == "sample_v1.0.0.json"

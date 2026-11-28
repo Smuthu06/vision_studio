@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeSteps, type BuildStep } from "./core/guide";
 import {
-  canDelete, childOptions, defOf, documentFromJson, documentFromText, documentToJson, documentToText, LoadError,
-  newDocument, nodeLabel, nodeToJson, TreeIndex, validateTree, walk, type ChildOption, type CNode, type Issue,
+  canDelete, childOptions, defOf, docKind, documentFromJson, documentFromText, documentToJson, documentToText, LoadError,
+  newDocument, newTesterDocument, nodeLabel, nodeToJson, TreeIndex, validateTree, walk, type ChildOption, type CNode, type Issue,
 } from "./core/model";
 import { RANK, type Severity } from "./core/schema";
 import {
-  browseFile, downloadJson, guardClose, isDesktop, isProjectHandle, listProjects, loadUiConfig, platformName, ProjectFileError,
-  readProject, saveProject, saveUiConfig, setWindowTitle, storage, type ProjectListing,
+  browseFile, downloadJson, guardClose, isDesktop, isProjectHandle, listFolder, loadUiConfig, platformName, ProjectFileError,
+  readProject, saveProject, saveUiConfig, setWindowTitle, storage, type FolderKind, type ProjectEntry, type ProjectListing,
   UiConfigConflict, type UiConfigState,
 } from "./platform";
 import { initialState, useAppStore } from "./state/store";
@@ -18,10 +18,15 @@ import { BottomPanel, BuildGuide } from "./ui/Panels";
 import { Tree } from "./ui/Tree";
 import { DetailsPane, parseInputId, type ActiveInput } from "./ui/DetailsPane";
 import sample from "./assets/sample.json";
-import { applyRenames, catalogUsage, defaultCatalog, normalizeCatalog, usageKey, type Catalog, type Rename, type SettingsSection } from "./core/catalog";
+import { applyRenames, catalogUsage, defaultCatalog, normalizeCatalog, usageKey, type Catalog, type Rename, type SettingsSection, type TesterContext } from "./core/catalog";
 import { SettingsWindow } from "./ui/Settings";
 import { OpenDialog } from "./ui/OpenDialog";
-import { projectFileName } from "./core/filename";
+import { PickProjectDialog } from "./ui/PickProjectDialog";
+import { configFileName } from "./core/filename";
+
+/** Without a backend (plain browser) the built-in sample stands in for the project folder. */
+const SAMPLE_NAME = configFileName(documentFromJson(sample).root);
+const KIND_LABEL: Record<"project" | "tester", string> = { project: "project", tester: "tester" };
 
 const APP = "Vision Studio";
 const DRAFT_KEY = "vision-studio.draft";
@@ -45,12 +50,18 @@ function Studio() {
   const { confirm, toast } = useOverlay();
   const { state, dispatch, mutate } = useAppStore(() => initialState());
   const root = state.doc.root;
+  const kind = docKind(root);
   const idx = useMemo(() => new TreeIndex(root), [root]);
-  const [catalog, setCatalog] = useState<Catalog>(loadCatalog);
+  const [baseCatalog, setCatalog] = useState<Catalog>(loadCatalog);
+  const [testerCtx, setTesterCtx] = useState<TesterContext | null>(null);
+  // the lists behind the dropdowns: Settings lists + (tester) the referenced project and bench folders
+  const catalog = useMemo<Catalog>(() => (kind === "tester" && testerCtx ? { ...baseCatalog, ctx: testerCtx } : baseCatalog), [baseCatalog, kind, testerCtx]);
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
   const [uiFile, setUiFile] = useState<UiConfigState | null>(null);   // where the lists live (ui_config.json)
-  const [projects, setProjects] = useState<ProjectListing | null>(null); // the project folder (null = plain browser)
+  const [folders, setFolders] = useState<Partial<Record<FolderKind, ProjectListing | null>>>({}); // null = plain browser
+  const projects = folders[kind] ?? null;                                  // where Save writes the open document
   const [openList, setOpenList] = useState<ProjectListing | null>(null); // File › Open dialog
+  const [pickProject, setPickProject] = useState<{ dir: string | null; files: ProjectEntry[]; error?: string | null } | null>(null);
   const issues = useMemo(() => validateTree(root, idx, catalog), [root, idx, catalog]);
   const steps = useMemo(() => computeSteps(root, issues, idx), [root, issues, idx]);
   const selected = idx.get(state.selectedId) ?? root;
@@ -83,6 +94,8 @@ function Studio() {
   stateRef.current = state;
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
+  const baseCatalogRef = useRef(baseCatalog);
+  baseCatalogRef.current = baseCatalog;
 
   // ---- gentle validation: only show what the user has touched, until they validate/save ---------
   const visibleIssues = useMemo(() => {
@@ -171,7 +184,7 @@ function Studio() {
       let f = await loadUiConfig();
       // first start next to the exe: create the file from the current lists so it can be found and shared
       if (!f.text && !f.error && f.backend !== "browser" && f.canSave) {
-        try { f = await saveUiConfig(f, JSON.stringify(catalogRef.current, null, 2) + "\n"); } catch { /* read-only folder: keep defaults */ }
+        try { f = await saveUiConfig(f, JSON.stringify(baseCatalogRef.current, null, 2) + "\n"); } catch { /* read-only folder: keep defaults */ }
       }
       adoptUiFile(f, announce);
     } catch (e) {
@@ -368,20 +381,70 @@ function Studio() {
     storage.remove(DRAFT_KEY);
     resetValidationView(false);
   };
-  const refreshProjects = async () => {
-    try { const l = await listProjects(); setProjects(l); return l; } catch { return null; }
+  const refreshFolder = async (k: FolderKind) => {
+    try { const l = await listFolder(k); setFolders((f) => ({ ...f, [k]: l })); return l; } catch { return null; }
   };
-  useEffect(() => { void refreshProjects(); }, []);
+  useEffect(() => { void refreshFolder("project"); void refreshFolder("tester"); }, []);
+
+  /** File › New › Tester: pick the project first; cancelling ends the request. */
+  const newTester = async () => {
+    if (!(await askDiscard())) return;
+    const l = await refreshFolder("project");
+    setPickProject(l ? { dir: l.dir, files: l.files, error: l.error } : { dir: null, files: [{ name: SAMPLE_NAME, modified: null, size: 0 }] });
+  };
+  const createTester = (projectFile: string) => {
+    setPickProject(null);
+    const doc = newTesterDocument(projectFile);
+    dispatch({ type: "load", doc, fileName: null, handle: null });
+    setCollapsed(new Set());
+    storage.remove(DRAFT_KEY);
+    resetValidationView(false);
+    toast(`New tester configuration for ${projectFile} – right-click the tester to add a mode`, "success");
+  };
+
+  // ---- tester: load the project it refers to and list the bench folders -----------------
+  const testerProject = kind === "tester" ? String(root.params.project ?? "") : null;
+  const loadTesterContext = useCallback(async (projectFile: string) => {
+    const [pl, bl, dl, il] = await Promise.all([refreshFolder("project"), refreshFolder("bitfile"), refreshFolder("datalogger"), refreshFolder("i2c")]);
+    const names = (l: ProjectListing | null) => (l ? l.files.map((f) => f.name) : null);
+    let project: TesterContext["project"] = null;
+    if (projectFile) {
+      try {
+        const text = pl ? await readProject(pl, projectFile) : projectFile === SAMPLE_NAME ? JSON.stringify(sample) : null;
+        if (text === null) project = { name: projectFile, root: null, error: `${projectFile} is not available here` };
+        else {
+          const d = documentFromText(text);
+          project = d.root.type === "project" ? { name: projectFile, root: d.root } : { name: projectFile, root: null, error: `${projectFile} is not a project configuration` };
+        }
+      } catch (e) { project = { name: projectFile, root: null, error: (e as Error).message }; }
+    }
+    setTesterCtx({
+      projectFiles: pl ? names(pl) : [SAMPLE_NAME], project, bitfiles: names(bl), dataloggers: names(dl), i2cFiles: names(il),
+      dirs: { project: pl?.dir, bitfile: bl?.dir, datalogger: dl?.dir, i2c: il?.dir },
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (testerProject === null) { setTesterCtx(null); return; }
+    void loadTesterContext(testerProject);
+    const onFocus = () => void loadTesterContext(testerProject); // files added while away show up
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [testerProject, loadTesterContext]);
+  useEffect(() => { // the project file could not be read: say so once
+    if (testerCtx?.project?.error) toast(`Project configuration: ${testerCtx.project.error}`, "error");
+  }, [testerCtx?.project?.error]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const browse = async () => {
+    const l = openList;
     setOpenList(null);
     try {
-      const r = await browseFile(projects?.files.length ? projects.dir : undefined); // the folder exists once something was saved
+      const r = await browseFile(l?.files.length ? l.dir : undefined); // the folder exists once something was saved
       if (r) load(r.text, r.name, r.handle);
     } catch (e) { toast(`Open failed: ${(e as Error).message}`, "error"); }
   };
-  const open = async () => {
+  const open = async (k: "project" | "tester" = kind) => {
     if (!(await askDiscard())) return;
-    const l = await refreshProjects();
+    const l = await refreshFolder(k);
     if (l) setOpenList(l); else await browse();
   };
   const openFromFolder = async (name: string) => {
@@ -389,7 +452,7 @@ function Studio() {
     setOpenList(null);
     if (!l) return;
     try {
-      load(await readProject(l, name), name, { project: name });
+      load(await readProject(l, name), name, { project: name, kind: l.kind });
     } catch (e) { toast(`Open failed: ${(e as Error).message}`, "error"); }
   };
   const openSample = async () => {
@@ -409,11 +472,12 @@ function Studio() {
         message: `${errs} validation error(s) remain. The file will not conform to the schema until they are fixed.` });
       if (r !== "confirm") { setBottomTab("problems"); return false; }
     }
-    // The name always comes from the project: <project>_v<version>.json in the project folder.
-    const name = projectFileName(st.doc.root.params);
+    // The name always comes from the configuration: <project|tester>_v<version>.json in its folder.
+    const docK = docKind(st.doc.root);
+    const name = configFileName(st.doc.root);
     const text = documentToText(st.doc);
     try {
-      const folder = await refreshProjects();
+      const folder = await refreshFolder(docK);
       if (!folder || !folder.canSave) { // plain browser, or another PC in web mode
         if (!(await downloadJson(text, name))) return false;
         dispatch({ type: "saved", fileName: name, handle: null });
@@ -422,9 +486,10 @@ function Studio() {
         return true;
       }
       // Re-saving the file that is open replaces it; any other file of that name needs a yes.
-      const own = isProjectHandle(st.fileHandle) && st.fileHandle.project.toLowerCase() === name.toLowerCase();
+      const own = isProjectHandle(st.fileHandle) && (st.fileHandle.kind ?? "project") === docK && st.fileHandle.project.toLowerCase() === name.toLowerCase();
+      const who = docK === "tester" ? st.doc.root.params.testerName : st.doc.root.params.project;
       const askReplace = async () => (await confirm({ title: `Replace ${name}?`, confirmLabel: "Replace", danger: true,
-          message: <>A configuration for project <b>{String(st.doc.root.params.project || "Untitled")}</b> version <b>{String(st.doc.root.params.version || "–")}</b> is already saved in <code>{folder.dir}</code>. Replace it with this one? To keep both, change the project version first.</> })) === "confirm";
+          message: <>A configuration for {KIND_LABEL[docK]} <b>{String(who || "Untitled")}</b> version <b>{String(st.doc.root.params.version || "–")}</b> is already saved in <code>{folder.dir}</code>. Replace it with this one? To keep both, change the {KIND_LABEL[docK]} version first.</> })) === "confirm";
       const exists = folder.files.some((f) => f.name.toLowerCase() === name.toLowerCase());
       if (exists && !own && !(await askReplace())) return false;
       let saved;
@@ -435,9 +500,9 @@ function Studio() {
         if (!(await askReplace())) return false;
         saved = await saveProject(folder, name, text, true);
       }
-      dispatch({ type: "saved", fileName: saved.name, handle: { project: saved.name } });
+      dispatch({ type: "saved", fileName: saved.name, handle: { project: saved.name, kind: docK } });
       storage.remove(DRAFT_KEY);
-      void refreshProjects();
+      void refreshFolder(docK);
       toast(`Saved ${saved.path}`, "success");
       return true;
     } catch (e) {
@@ -507,7 +572,7 @@ function Studio() {
     window.addEventListener("mouseup", up);
   };
 
-  const targetName = projectFileName(root.params);
+  const targetName = configFileName(root);
   const renamed = !!state.fileName && isProjectHandle(state.fileHandle) && state.fileName.toLowerCase() !== targetName.toLowerCase();
   const sep = projects?.dir.includes("\\") ? "\\" : "/";
 
@@ -521,8 +586,14 @@ function Studio() {
           <button className="tb" id="file-menu-btn" aria-haspopup="menu" onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.bottom + 4, minWidth: 250, items: [
-              { label: "New project", icon: "file", shortcut: `${isDesktop ? MOD : "Alt+" + MOD}N`, onSelect: () => void newDoc() },
-              { label: "Open…", icon: "folder", shortcut: `${MOD}O`, onSelect: () => void open() },
+              { kind: "submenu", label: "New", icon: "file", items: [
+                { label: "Project", nodeIcon: "project", hint: "Project configuration", shortcut: `${isDesktop ? MOD : "Alt+" + MOD}N`, onSelect: () => void newDoc() },
+                { label: "Tester", nodeIcon: "tester", hint: "Tester configuration for a project", onSelect: () => void newTester() },
+              ] },
+              { kind: "submenu", label: "Open", icon: "folder", items: [
+                { label: "Project…", nodeIcon: "project", hint: "From the project configuration folder", shortcut: kind === "project" ? `${MOD}O` : undefined, onSelect: () => void open("project") },
+                { label: "Tester…", nodeIcon: "tester", hint: "From the tester configuration folder", shortcut: kind === "tester" ? `${MOD}O` : undefined, onSelect: () => void open("tester") },
+              ] },
               { label: "Open sample project", icon: "sample", onSelect: () => void openSample() },
               { kind: "separator" },
               { label: `Save as ${targetName}`, icon: "save", shortcut: `${MOD}S`, onSelect: () => void save() },
@@ -546,7 +617,7 @@ function Studio() {
         </div>
         <span className="spacer" />
         <div className="file-chip" title={renamed
-          ? `Open: ${state.fileName}. Project name or version changed – Save writes ${targetName} (the old file is kept)`
+          ? `Open: ${state.fileName}. ${kind === "tester" ? "Tester" : "Project"} name or version changed – Save writes ${targetName} (the old file is kept)`
           : projects?.canSave ? `${projects.dir}${sep}${targetName}` : targetName}>
           {state.dirty && <span className="dirty-dot" title="Unsaved changes" />}
           {renamed && <><span className="file-old">{state.fileName}</span><Icon name="chevronRight" size={12} /></>}
@@ -605,7 +676,7 @@ function Studio() {
 
       <footer className="statusbar">
         <span className="status-item"><Icon name={isDesktop ? "desktop" : "globe"} size={13} />{platformName}</span>
-        <span className="status-item">Schema {String(root.params.schemaVersion ?? "")}</span>
+        <span className="status-item">{kind === "tester" ? `Tester · ${String(root.params.project || "no project")}` : `Schema ${String(root.params.schemaVersion ?? "")}`}</span>
         <span className="status-item">{state.dirty ? "Unsaved changes" : state.fileName ? "Saved" : "Not saved yet"}</span>
         <span className="spacer" />
         <button className="status-item status-btn" onClick={() => setBottomTab("problems")}>
@@ -616,10 +687,13 @@ function Studio() {
       </footer>
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
-      {openList && <OpenDialog listing={openList} current={isProjectHandle(state.fileHandle) ? state.fileHandle.project : null}
+      {pickProject && <PickProjectDialog dir={pickProject.dir} files={pickProject.files} error={pickProject.error}
+        onPick={createTester} onCancel={() => setPickProject(null)} />}
+      {openList && <OpenDialog listing={openList} title={`Open ${openList.kind} configuration`}
+        current={isProjectHandle(state.fileHandle) && (state.fileHandle.kind ?? "project") === openList.kind ? state.fileHandle.project : null}
         onOpen={(n) => void openFromFolder(n)} onBrowse={() => void browse()} onClose={() => setOpenList(null)} />}
       {settingsAt && (
-        <SettingsWindow key={uiFile?.modified ?? 0} catalog={catalog} usage={catalogUsage(root)} initialSection={settingsAt}
+        <SettingsWindow key={uiFile?.modified ?? 0} catalog={baseCatalog} usage={catalogUsage(root)} initialSection={settingsAt}
           storage={uiFile} onReload={() => void reloadUiConfig(true)}
           onApply={(c, r) => void applySettings(c, r)} onClose={() => setSettingsAt(null)} />
       )}
@@ -642,7 +716,7 @@ function TB({ icon, label, kbd, onClick, disabled, iconOnly, accent, danger, tit
 
 function Shortcuts() {
   const rows: Array<[string, string]> = [
-    [`${isDesktop ? MOD : "Alt+" + MOD}N`, "New project"], [`${MOD}O`, "Open"], [`${MOD}S`, "Save (<project>_v<version>.json)"],
+    [`${isDesktop ? MOD : "Alt+" + MOD}N`, "New project"], [`${MOD}O`, "Open (project or tester, like the open file)"], [`${MOD}S`, "Save (<project>_v<version>.json)"],
     [`${MOD}Z / ${MOD}Y`, "Undo / Redo"], ["F5 or " + MOD + "Enter", "Validate"], ["Right-click / Shift+F10 / Insert", "Node menu: add, duplicate, delete"],
     ["F1", "Show / hide the Details pane"], [`${MOD},`, "Settings (dropdown lists)"], ["↑ ↓ ← →", "Navigate the tree"], ["Del (tree focused)", "Delete node"], [`${MOD}D`, "Duplicate camera / VC"],
   ];

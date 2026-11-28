@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   columnDoc, constraintRows, containsList, fieldDoc, jsonPathOf, NODE_DOCS, resolveTable, tableDoc, type InputDoc,
 } from "../core/docs";
-import { DEFS, EMBEDDED_INFO_TABLE, EMBEDDED_LINE_TABLE, nodeLabel, type CNode, type IconName, type Issue, type TreeIndex } from "../core/model";
+import { DEFS, EMBEDDED_INFO_TABLE, EMBEDDED_LINE_TABLE, nodeLabel, optionRecord, type CNode, type IconName, type Issue, type TreeIndex } from "../core/model";
 import { displayValue, getPath, isRequired, RANK, type FieldSpec, type Json, type Severity, type TableSpec } from "../core/schema";
 import { Icon, NodeIcon } from "./icons";
 import { resolveSpec, type Catalog } from "../core/catalog";
@@ -70,7 +70,7 @@ export function DetailsPane({ node, idx, issues, active, width, onResize, onClos
     () => [...(def.tables ?? []), ...(node.type === "vc" ? [EMBEDDED_LINE_TABLE, EMBEDDED_INFO_TABLE] : [])],
     [def, node.type]);
 
-  const fieldEntries: Entry[] = (def.fields ?? []).map((s) => ({ id: `f:${s.key}`, spec: resolveSpec(s, catalog, node.params), doc: fieldDoc(node.type, s.key) }));
+  const fieldEntries: Entry[] = (def.fields ?? []).map((s) => ({ id: `f:${s.key}`, spec: resolveSpec(s, catalog, optionRecord(node, idx)), doc: fieldDoc(node.type, s.key) }));
   const tableEntries = tables.map((t) => ({
     table: t,
     entries: t.columns.map((c) => ({ id: `t:${t.docId}:${c.key}`, spec: resolveSpec(c, catalog, {}), doc: columnDoc(t, c.key), table: t } as Entry)),

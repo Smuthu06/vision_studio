@@ -23,7 +23,44 @@ const hasErrorsIn = (n: CNode, issues: Issue[], idx: TreeIndex) => {
   return issues.some((i) => i.severity === "error" && ids.has(i.nodeId));
 };
 
+/** Tester configuration: tester info → modes → camera models (with channels) → validate. */
+function computeTesterSteps(root: CNode, issues: Issue[], idx: TreeIndex): BuildStep[] {
+  const steps: BuildStep[] = [];
+  const err = (n: CNode) => issues.some((i) => i.nodeId === n.id && i.severity === "error");
+  steps.push({ id: "tester", title: "Tester information", status: err(root) ? "attention" : "done",
+    detail: err(root) ? "Fill in tester name, version, author and email" : String(root.params.project || "Metadata complete"),
+    action: { kind: "select", nodeId: root.id } });
+  const modes = root.children;
+  if (!modes.length) steps.push({ id: "modes", title: "Modes", status: "todo", detail: "Right-click the tester to add a mode", action: { kind: "add", parentId: root.id, type: "testerMode" } });
+  else {
+    const bad = modes.find((m) => err(m));
+    steps.push({ id: "modes", title: "Modes", status: bad ? "attention" : "done", detail: modes.map((m) => m.params.mode || "?").join(" + "),
+      action: { kind: "select", nodeId: (bad ?? modes[0]).id } });
+    const empty = modes.find((m) => !m.children.length);
+    const cams = modes.flatMap((m) => m.children);
+    const badCam = cams.find((c) => hasErrorsIn(c, issues, idx));
+    steps.push(empty
+      ? { id: "cameras", title: "Camera models", status: "todo", detail: `Add a camera model to ${empty.params.mode || "the mode"}`, action: { kind: "add", parentId: empty.id, type: "testerCamera" } }
+      : { id: "cameras", title: "Camera models", status: badCam ? "attention" : "done",
+        detail: badCam ? `Complete ${DEFS.testerCamera.label!(badCam)}` : `${cams.length} camera model(s)`, action: { kind: "select", nodeId: (badCam ?? cams[0]).id } });
+    const noCh = cams.find((c) => !c.children.length);
+    if (cams.length) steps.push(noCh
+      ? { id: "channels", title: "Channels", status: "todo", detail: `Right-click ${DEFS.testerCamera.label!(noCh)} to add a channel`, action: { kind: "add", parentId: noCh.id, type: "testerChannel" } }
+      : { id: "channels", title: "Channels", status: "done", detail: `${cams.reduce((a, c) => a + c.children.length, 0)} channel(s)` });
+    const chans = cams.flatMap((c) => c.children);
+    const noVc = chans.find((c) => !c.children.some((x) => x.type === "testerVc"));
+    if (chans.length) steps.push(noVc
+      ? { id: "vcs", title: "Virtual channels", status: "todo", detail: `Right-click ${DEFS.testerChannel.label!(noVc)} to add a virtual channel`, action: { kind: "add", parentId: noVc.id, type: "testerVc" } }
+      : { id: "vcs", title: "Virtual channels", status: "done", detail: `${chans.reduce((a, c) => a + c.children.filter((x) => x.type === "testerVc").length, 0)} virtual channel(s)` });
+  }
+  const nErr = issues.filter((i) => i.severity === "error").length;
+  steps.push({ id: "validate", title: "Validate & export", status: nErr ? "attention" : (steps.every((s) => s.status !== "todo") ? "done" : "todo"),
+    detail: nErr ? `${nErr} error(s) to resolve` : "Ready to save the JSON" });
+  return steps;
+}
+
 export function computeSteps(root: CNode, issues: Issue[], idx = new TreeIndex(root)): BuildStep[] {
+  if (root.type === "tester") return computeTesterSteps(root, issues, idx);
   const steps: BuildStep[] = [];
   const rootErr = issues.some((i) => i.nodeId === root.id && i.severity === "error");
   steps.push({

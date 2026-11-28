@@ -106,5 +106,51 @@
       "value": "0x2F",
       "description": "RAW20"
     }
+  ],
+  "fpgaDevices": [
+    {
+      "value": "PXIe-1486",
+      "description": "Kintex UltraScale KU11P"
+    },
+    {
+      "value": "PXIe-1487",
+      "description": "Kintex UltraScale KU11P"
+    },
+    {
+      "value": "PXIe-1488",
+      "description": "Kintex UltraScale KU11P"
+    },
+    {
+      "value": "PXIe-1489",
+      "description": "Kintex UltraScale KU11P"
+    }
+  ],
+  "boardDefaults": [
+    {
+      "value": "Default",
+      "description": "Board defaults as shipped"
+    }
+  ],
+  "debayerConfigs": [
+    {
+      "value": "Off",
+      "description": "No debayering (raw data)"
+    },
+    {
+      "value": "RGGB",
+      "description": "Bayer pattern R G / G B"
+    },
+    {
+      "value": "GRBG",
+      "description": "Bayer pattern G R / B G"
+    },
+    {
+      "value": "GBRG",
+      "description": "Bayer pattern G B / R G"
+    },
+    {
+      "value": "BGGR",
+      "description": "Bayer pattern B G / G R"
+    }
   ]
 }

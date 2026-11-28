@@ -55,10 +55,10 @@ export function FieldInput({ spec, value, onChange, issue, id, cell, disabled }:
           }
           if (e.target.value !== "__invalid") onChange(opts[+e.target.value][0]);
         }}>
-        {!known && <option value="__invalid">{empty ? "— select —" : `${value} (${spec.source ? "not in Settings" : "invalid"})`}</option>}
+        {!known && <option value="__invalid">{empty ? "— select —" : `${value} (${!spec.source ? "invalid" : SOURCE_INFO[spec.source].section ? "not in Settings" : "not available"})`}</option>}
         {opts.map(([, l], i) => <option key={i} value={String(i)}>{l}</option>)}
         {spec.source && !opts.length && <option value="__invalid" disabled>(list is empty)</option>}
-        {spec.source && <option value="__settings">⚙ Edit list in Settings…</option>}
+        {spec.source && SOURCE_INFO[spec.source].section && <option value="__settings">⚙ Edit list in Settings…</option>}
       </select>
     );
   }

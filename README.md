@@ -83,7 +83,11 @@ The exe reads `VisionStudio.ini` from its own folder (template: `config/vision-s
 [app]
 mode = desktop        ; desktop = own window, web = serve the editor to a browser
 ui_config = ui_config.json   ; dropdown lists (File › Settings), may be a network path
-project_dir = ../../configurations/project_configuration   ; where Save writes the configurations
+project_dir = ../../configurations/project_configuration   ; where Save writes project configurations
+tester_dir = ../../configurations/tester_configuration     ; where Save writes tester configurations
+bitfile_dir = ../../fpga_bitfile                           ; *.lvbitx offered as Bit File (read only)
+datalogger_dir = ../../datalogger_configuration            ; *.json offered as Datalogger Configuration (read only)
+i2c_dir = ../../configurations/i2c_configuration           ; *.txt offered as I2C Initialisation File (read only)
 
 [desktop]
 width = 1440
@@ -111,6 +115,80 @@ open_browser = true
   change.
 * The installer (`installer` option) installs per user and puts `vision-studio.ini` next
   to the program, so it can be edited without admin rights.
+
+### Tester configuration
+
+A second kind of configuration describes the test bench used for a project. **File › New** and
+**File › Open** each have a *Project* and a *Tester* entry.
+
+1. **File › New › Tester** asks for the project configuration first: a dropdown lists the JSON
+   files in the project folder. *Cancel* ends the request and leaves the open document as it is.
+2. The new tester has one node. Fill in Tester Name, Version, Author and Email Address. The
+   project you chose is shown as *Project Configuration* and can be changed later.
+3. **Right-click the tester › Add Mode.** The *Mode* dropdown lists the modes of the selected
+   project, and each mode can be added once. *Multiple Display* appears only when the project
+   enables EMCfeature.
+4. **Right-click a mode › Add Camera Model.** Its inputs:
+
+| Input | Values from |
+| --- | --- |
+| Camera Model | camera models of the project |
+| Camera Model Name | free text; shown in the tree |
+| Device Manufacturer | the project's hardware for that camera model in this mode (CaptureMode → Capture Hardware, PassthroughMode → Passthrough Hardware) |
+| Device Model | the same hardware, for the chosen manufacturer |
+| FPGA Device | Settings › FPGA devices (`ui_config.json`) |
+| Device Resources | free text, e.g. `RIO0` |
+| Bit File | `*.lvbitx` in `bitfile_dir` |
+| Datalogger Configuration | `*.json` in `datalogger_dir` (optional) |
+| FPGA Board Defaults | Settings › FPGA board defaults (`ui_config.json`) |
+
+5. **Right-click a camera model › Add Channel.** This adds a channel node (the next free
+   channel of SI0–SI7, SO0–SO7) that always comes with an **I2C Worker** node. Each channel can
+   be used once per camera model.
+
+| Node | Inputs |
+| --- | --- |
+| Channel | Channel (SI0–SI7, SO0–SO7), Channel Name, PoC Mode, Streaming Mode, I2C Initialisation File (`*.txt` in `i2c_dir`, optional) |
+| I2C Worker | Option (Monitoring / Monitoring and Checking), Pause Time (ms) |
+| Virtual Channel | Virtual Channel (from the camera model's Frame Information in the project), Name, Debayer Configuration (Settings › Debayer configurations) |
+| Frame Analysis Worker | none yet |
+
+6. **Right-click a channel › Add Virtual Channel.** This adds a virtual channel node, which
+   always comes with a **Frame Analysis Worker** node. Each virtual channel can be used once per
+   channel.
+
+Neither worker can be deleted on its own; deleting the channel or virtual channel removes it.
+
+The lists from the project and the folders are re-read when the window gets focus, so files
+copied in while Vision Studio is open show up. A value that is no longer offered is reported,
+for example "Bit File '…' is not found in the fpga_bitfile folder". A bit file built for
+another device than the FPGA Device (`…_NI1486_…` with PXIe-1487) gives a warning.
+
+**Save** writes `<Tester Name>_v<version>.json` into `tester_dir`, following the same rules as
+projects. The file looks like this:
+
+```json
+{
+  "tester": {
+    "testerName": "HIL_Bench", "version": "V.1.0.0", "author": "engineer", "emailAddress": "engineer@company.com",
+    "project": "sample_v1.0.0.json",
+    "modes": [{
+      "mode": "CaptureMode", "multipleDisplay": true,
+      "cameraModels": [{
+        "cameraModel": "ADAS_Camera_Model_A", "name": "Front_Left",
+        "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487", "fpgaDevice": "PXIe-1487",
+        "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
+        "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "Default",
+        "channels": [{
+          "channel": "SI0", "name": "Front", "pocMode": true, "streamingMode": false, "i2cInitFile": "front_init.txt",
+          "i2cWorker": { "option": "Monitoring and Checking", "pauseTime": 250 },
+          "virtualChannels": [{ "virtualChannel": 0, "name": "Front_VC0", "debayer": "RGGB", "frameAnalysisWorker": {} }]
+        }]
+      }]
+    }]
+  }
+}
+```
 
 ### Saving and opening: the project folder
 

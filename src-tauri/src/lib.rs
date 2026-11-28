@@ -15,7 +15,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use std::sync::Arc;
 use tauri::{App, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
-use projects::{FileError, Listing, ProjectDir, Saved};
+use projects::{FileError, Folders, Listing, Saved};
 use ui_config::{SaveError, Store, UiConfigFile};
 
 /// Desktop mode: read ui_config.json (the Settings lists).
@@ -29,21 +29,21 @@ fn ui_config_load(store: State<'_, Arc<Store>>) -> UiConfigFile {
 fn ui_config_save(store: State<'_, Arc<Store>>, text: String, base_modified: Option<u64>) -> Result<UiConfigFile, SaveError> {
     store.save(&text, base_modified)
 }
-/// Desktop mode: the project folder and the configurations in it.
+/// Desktop mode: a bench folder (`project`, `tester`, `bitfile`, `datalogger`) and its files.
 #[tauri::command]
-fn projects_list(dir: State<'_, Arc<ProjectDir>>) -> Listing {
-    dir.list(true)
+fn files_list(folders: State<'_, Arc<Folders>>, kind: String) -> Result<Listing, FileError> {
+    Ok(folders.get(&kind)?.list(true))
 }
 
 #[tauri::command]
-fn project_read(dir: State<'_, Arc<ProjectDir>>, name: String) -> Result<String, FileError> {
-    dir.read(&name)
+fn file_read(folders: State<'_, Arc<Folders>>, kind: String, name: String) -> Result<String, FileError> {
+    folders.get(&kind)?.read(&name)
 }
 
-/// Save `<name>` in the project folder; refuses to replace a file unless `overwrite`.
+/// Save `<name>` in a configuration folder; refuses to replace a file unless `overwrite`.
 #[tauri::command]
-fn project_save(dir: State<'_, Arc<ProjectDir>>, name: String, text: String, overwrite: bool) -> Result<Saved, FileError> {
-    dir.save(&name, &text, overwrite)
+fn file_save(folders: State<'_, Arc<Folders>>, kind: String, name: String, text: String, overwrite: bool) -> Result<Saved, FileError> {
+    folders.get(&kind)?.save(&name, &text, overwrite)
 }
 
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
@@ -54,7 +54,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![ui_config_load, ui_config_save, projects_list, project_read, project_save])
+        .invoke_handler(tauri::generate_handler![ui_config_load, ui_config_save, files_list, file_read, file_save])
         .setup(move |app| {
             let mut extra = Vec::new();
             if let Ok(d) = app.path().app_config_dir() { extra.push(d); }
@@ -67,9 +67,10 @@ pub fn run() {
             let store = Arc::new(Store::new(cfg.ui_config_path()));
             eprintln!("Vision Studio: dropdown lists in {}", store.path().display());
             app.manage(store);
-            let projects = Arc::new(ProjectDir::new(cfg.project_dir_path()));
-            eprintln!("Vision Studio: configurations saved in {}", projects.dir().display());
-            app.manage(projects);
+            let folders = Arc::new(cfg.folders());
+            eprintln!("Vision Studio: project configurations in {}", folders.project.dir().display());
+            eprintln!("Vision Studio: tester configurations in {}", folders.tester.dir().display());
+            app.manage(folders);
             match cfg.mode {
                 Mode::Desktop => open_desktop_window(app, &cfg)?,
                 Mode::Web => start_web_mode(app, &cfg)?,
@@ -114,8 +115,8 @@ fn open_desktop_window(app: &mut App, cfg: &Config) -> tauri::Result<()> {
 fn start_web_mode(app: &mut App, cfg: &Config) -> tauri::Result<()> {
     let url = cfg.url();
     let store = app.state::<Arc<Store>>().inner().clone();
-    let projects = app.state::<Arc<ProjectDir>>().inner().clone();
-    if let Err(msg) = web::serve(app.handle().clone(), &cfg.host, cfg.port, store, projects) {
+    let folders = app.state::<Arc<Folders>>().inner().clone();
+    if let Err(msg) = web::serve(app.handle().clone(), &cfg.host, cfg.port, store, folders) {
         let handle = app.handle().clone();
         app.dialog()
             .message(format!("{msg}\n\nChange [web] port in the INI file (or close the program using it) and start Vision Studio again."))
