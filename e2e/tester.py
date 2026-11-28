@@ -122,8 +122,9 @@ with sync_playwright() as p:
     page.wait_for_selector(".tree-row:has-text('Frame Analysis Worker')")
     page.locator(".tree-row", has_text="VC0").first.click()
     assert options(field(page, "Virtual Channel")) == ["0 – Front"], options(field(page, "Virtual Channel"))
-    assert "RGGB – Bayer pattern R G / G B" in options(field(page, "Debayer Configuration"))
-    field(page, "Debayer Configuration").select_option(label="RGGB – Bayer pattern R G / G B")
+    deb = options(field(page, "Debayer Configuration"))
+    assert "YUV422_YUYV_to_RGB – 1920×1080 YUV 422_YUYV → RGB BGRA" in deb, deb
+    field(page, "Debayer Configuration").select_option(label="YUV422_YUYV_to_RGB – 1920×1080 YUV 422_YUYV → RGB BGRA")
     field(page, "Name").fill("Front_VC0")
     page.keyboard.press("Tab")
     page.screenshot(path=f"{OUT}/tester_vc.png")
@@ -167,14 +168,14 @@ with sync_playwright() as p:
     assert cam == {
         "cameraModel": "ADAS_Camera_Model_A", "name": "Front_Left", "deviceManufacturer": "NationalInstruments", "deviceModel": "NI1487",
         "fpgaDevice": "PXIe-1487", "deviceResources": "RIO0", "bitFile": "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx",
-        "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "Default",
+        "dataloggerConfiguration": "front_logger.json", "fpgaBoardDefaults": "board1",
         "channels": [
             {"channel": "SI0", "name": "Front", "pocMode": True, "streamingMode": False, "i2cInitFile": "front_init.txt",
              "i2cWorker": {"option": "Monitoring and Checking", "pauseTime": 250},
-             "virtualChannels": [{"virtualChannel": 0, "name": "Front_VC0", "debayer": "RGGB", "frameAnalysisWorker": {}}]},
+             "virtualChannels": [{"virtualChannel": 0, "name": "Front_VC0", "debayer": "YUV422_YUYV_to_RGB", "frameAnalysisWorker": {}}]},
             {"channel": "SO1", "name": "ECU", "pocMode": False, "streamingMode": False, "i2cInitFile": "",
              "i2cWorker": {"option": "Monitoring", "pauseTime": 100},
-             "virtualChannels": [{"virtualChannel": 0, "name": "Front", "debayer": "Off", "frameAnalysisWorker": {}}]},
+             "virtualChannels": [{"virtualChannel": 0, "name": "Front", "debayer": "RAW_RGGB_to_RGB", "frameAnalysisWorker": {}}]},
         ],
     }, cam
 

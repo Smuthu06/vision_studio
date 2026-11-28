@@ -127,30 +127,71 @@
   ],
   "boardDefaults": [
     {
-      "value": "Default",
-      "description": "Board defaults as shipped"
+      "boardName": "board1",
+      "siReferenceClockHz": 25000000,
+      "soReferenceClockHz": 25000000,
+      "framesOnDma": 20,
+      "frameSyncWindow": 30,
+      "frameSyncToleranceUs": 650,
+      "llpFifoDepth": 200000000,
+      "routingSignals": [
+        {
+          "source": "PXI_Trig1",
+          "destination": "Start_Trig"
+        },
+        {
+          "source": "PXI_Trig4",
+          "destination": "BackPlane_CAM_Trig"
+        }
+      ]
     }
   ],
   "debayerConfigs": [
     {
-      "value": "Off",
-      "description": "No debayering (raw data)"
+      "name": "RAW_RGGB_to_RGB",
+      "imageWidth": 1632,
+      "imageHeight": 1290,
+      "inputFormat": {
+        "dataSize": 2,
+        "bitDepthPerChannel": 12,
+        "useBigEndian": 1,
+        "imageFormat": "IMAGE_FORMAT_RAW",
+        "formatParameter": 3
+      },
+      "outputFormat": {
+        "dataSize": 1,
+        "bitDepthPerChannel": 8,
+        "useBigEndian": 0,
+        "imageFormat": "IMAGE_FORMAT_RGB",
+        "formatParameter": 3
+      },
+      "conversionParameter": 0,
+      "devicePreferred": "DEVICE_TYPE_GPU",
+      "deviceAlternative": "DEVICE_TYPE_CPU",
+      "imageType": 4
     },
     {
-      "value": "RGGB",
-      "description": "Bayer pattern R G / G B"
-    },
-    {
-      "value": "GRBG",
-      "description": "Bayer pattern G R / B G"
-    },
-    {
-      "value": "GBRG",
-      "description": "Bayer pattern G B / R G"
-    },
-    {
-      "value": "BGGR",
-      "description": "Bayer pattern B G / G R"
+      "name": "YUV422_YUYV_to_RGB",
+      "imageWidth": 1920,
+      "imageHeight": 1080,
+      "inputFormat": {
+        "dataSize": 1,
+        "bitDepthPerChannel": 8,
+        "useBigEndian": 0,
+        "imageFormat": "IMAGE_FORMAT_YUV",
+        "formatParameter": 3
+      },
+      "outputFormat": {
+        "dataSize": 1,
+        "bitDepthPerChannel": 8,
+        "useBigEndian": 0,
+        "imageFormat": "IMAGE_FORMAT_RGB",
+        "formatParameter": 3
+      },
+      "conversionParameter": 0,
+      "devicePreferred": "DEVICE_TYPE_GPU",
+      "deviceAlternative": "DEVICE_TYPE_CPU",
+      "imageType": 4
     }
   ]
 }

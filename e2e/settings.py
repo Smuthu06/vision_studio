@@ -27,7 +27,7 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={"width": 1440, "height": 900}, color_scheme=SCHEME)
     page = ctx.new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: m.type == "error" and errors.append(m.text))
+    page.on("console", lambda m: m.type == "error" and "404" not in m.text and errors.append(m.text))
     page.goto(URL); page.evaluate("localStorage.clear()"); page.reload()
     page.wait_for_selector(".tree-row")
     page.click("#file-menu-btn"); page.locator(".menu-item", has_text="Open sample project").click()

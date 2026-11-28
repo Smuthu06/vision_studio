@@ -1,4 +1,8 @@
-"""End-to-end: build a configuration step by step from an empty project, then save it."""
+"""End-to-end: build a configuration step by step from an empty project, then save it.
+
+Runs against a page WITHOUT the Vision Studio API (Save must explain and offer a download), e.g.
+  npm run build && python3 -m http.server -d dist 4180 &   python e2e/flow.py http://localhost:4180/
+(the API probes answer 404 there; those console messages are expected)."""
 import json, sys, os
 from playwright.sync_api import sync_playwright
 
@@ -24,7 +28,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1440, "height": 900}, accept_downloads=True)
     page.add_init_script("delete window.showSaveFilePicker; delete window.showOpenFilePicker; localStorage.clear()")
-    page.on("console", lambda m: m.type == "error" and errors.append(m.text))
+    page.on("console", lambda m: m.type == "error" and "404" not in m.text and errors.append(m.text))
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(URL)
     page.wait_for_selector(".tree-row")

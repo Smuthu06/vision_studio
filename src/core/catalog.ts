@@ -9,6 +9,10 @@
  * validator uses the same lists, so the UI and the checks always agree.
  */
 import { FEATURE_EMC, type CatalogSource, type FieldSpec, type Json } from "./schema";
+import {
+  boardSummary, debayerSummary, defaultBoard, defaultDebayer, readBoards, readDebayers, yuvDebayer,
+  type BoardDefaults, type DebayerConfig,
+} from "./benchDefaults";
 
 export interface CatalogOption { value: string; description?: string }
 export interface HwModel { name: string; description?: string; serializers: string[]; deserializers: string[] }
@@ -23,8 +27,8 @@ export interface Catalog {
   imageFormats: CatalogOption[];
   dataTypes: CatalogOption[];
   fpgaDevices: CatalogOption[];      // tester camera › FPGA Device
-  boardDefaults: CatalogOption[];    // tester camera › FPGA Board Defaults
-  debayerConfigs: CatalogOption[];   // tester virtual channel › Debayer Configuration
+  boardDefaults: BoardDefaults[];    // tester camera › FPGA Board Defaults (by boardName)
+  debayerConfigs: DebayerConfig[];   // tester virtual channel › Debayer Configuration (by name)
   /** Runtime only (never saved): what a tester configuration refers to. */
   ctx?: TesterContext;
 }
@@ -56,8 +60,8 @@ export const SECTIONS: Array<{ id: SettingsSection; title: string; help: string 
   { id: "imageFormats", title: "Image formats", help: "Pixel / packet formats offered in Camera Model › Packet Format and Frame Outputs › Format." },
   { id: "dataTypes", title: "Data types", help: "MIPI CSI-2 data type identifiers offered in Frame Outputs › Data ID (hex 0x00–0x3F)." },
   { id: "fpgaDevices", title: "FPGA devices", help: "Tester configuration: FPGA devices offered in Camera Model › FPGA Device." },
-  { id: "boardDefaults", title: "FPGA board defaults", help: "Tester configuration: board default sets offered in Camera Model › FPGA Board Defaults." },
-  { id: "debayerConfigs", title: "Debayer configurations", help: "Tester configuration: debayer settings offered in Virtual Channel › Debayer Configuration." },
+  { id: "boardDefaults", title: "FPGA board defaults", help: "Tester configuration: FPGA board settings (reference clocks, DMA, frame sync, LLP FIFO, routing signals), chosen by board name in Camera Model › FPGA Board Defaults." },
+  { id: "debayerConfigs", title: "Debayer configurations", help: "Tester configuration: debayer settings (image size, input and output format, conversion, devices, IMAQ image type), chosen by name in Virtual Channel › Debayer Configuration." },
 ];
 
 /**
@@ -136,14 +140,8 @@ export function defaultCatalog(): Catalog {
       { value: "PXIe-1488", description: "Kintex UltraScale KU11P" },
       { value: "PXIe-1489", description: "Kintex UltraScale KU11P" },
     ],
-    boardDefaults: [{ value: "Default", description: "Board defaults as shipped" }],
-    debayerConfigs: [
-      { value: "Off", description: "No debayering (raw data)" },
-      { value: "RGGB", description: "Bayer pattern R G / G B" },
-      { value: "GRBG", description: "Bayer pattern G R / B G" },
-      { value: "GBRG", description: "Bayer pattern G B / R G" },
-      { value: "BGGR", description: "Bayer pattern B G / G R" },
-    ],
+    boardDefaults: [defaultBoard()],
+    debayerConfigs: [defaultDebayer(), yuvDebayer()],
   };
 }
 
@@ -221,8 +219,8 @@ export function normalizeCatalog(raw: Json): { catalog: Catalog; warnings: strin
     imageFormats: pick("imageFormats", () => options(raw.imageFormats, "imageFormats", warnings)),
     dataTypes: pick("dataTypes", () => options(raw.dataTypes, "dataTypes", warnings, true)),
     fpgaDevices: pick("fpgaDevices", () => options(raw.fpgaDevices, "fpgaDevices", warnings)),
-    boardDefaults: pick("boardDefaults", () => options(raw.boardDefaults, "boardDefaults", warnings)),
-    debayerConfigs: pick("debayerConfigs", () => options(raw.debayerConfigs, "debayerConfigs", warnings)),
+    boardDefaults: pick("boardDefaults", () => readBoards(raw.boardDefaults, warnings)),
+    debayerConfigs: pick("debayerConfigs", () => readDebayers(raw.debayerConfigs, warnings)),
   };
   // older ui_config.json files: add built-in features that are missing (keep the file's spelling otherwise)
   for (const b of BUILT_IN_FEATURES) if (!catalog.features.some((f) => f.value.toLowerCase() === b.value.toLowerCase())) catalog.features.push({ ...b });
@@ -290,8 +288,8 @@ export function optionsFor(source: CatalogSource, c: Catalog, record: Json = {})
       return plain(vs);
     }
     case "fpgaDevices": return fromOpts(c.fpgaDevices ?? [], true);
-    case "boardDefaults": return fromOpts(c.boardDefaults ?? [], true);
-    case "debayerConfigs": return fromOpts(c.debayerConfigs ?? [], true);
+    case "boardDefaults": return fromOpts((c.boardDefaults ?? []).map((b) => ({ value: b.boardName, description: b.description || boardSummary(b) })), true);
+    case "debayerConfigs": return fromOpts((c.debayerConfigs ?? []).map((d) => ({ value: d.name, description: d.description || debayerSummary(d) })), true);
   }
   // tester: the project JSON and the bench folders
   const ctx = c.ctx;

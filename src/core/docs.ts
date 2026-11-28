@@ -235,7 +235,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
     deviceResources: { doc: "NI resource name used to open the FPGA device (as shown in NI MAX).", example: "RIO0" },
     bitFile: { doc: "FPGA bit file (.lvbitx) loaded into the device. The list shows the files in the fpga_bitfile folder (bitfile_dir in the INI).", example: "FPGA_4IN4OUT_NI1487_Universal_v10.0.0.lvbitx" },
     dataloggerConfiguration: { doc: "Datalogger configuration used for this camera. The list shows the JSON files in the datalogger_configuration folder (datalogger_dir in the INI).", example: "datalogger_front.json" },
-    fpgaBoardDefaults: { doc: "Set of FPGA board defaults applied when the device is opened. The list is maintained in File › Settings › FPGA board defaults.", example: "Default" },
+    fpgaBoardDefaults: { doc: "FPGA board defaults applied when the device is opened: SI/SO reference clocks, frames on DMA, frame sync window and tolerance, LLP FIFO depth and the routing signals (e.g. PXI_Trig1 → Start_Trig). The boards are defined in File › Settings › FPGA board defaults; the tester stores the board name.", example: "board1" },
   },
   testerChannel: {
     channel: { doc: "Bench channel: SI0–SI7 (deserializer inputs) or SO0–SO7 (serializer outputs). Each channel can be used once per camera model.", example: "SI0" },
@@ -251,7 +251,7 @@ export const FIELD_DOCS: Record<NodeType, Record<string, InputDoc>> = {
   testerVc: {
     virtualChannel: { doc: "Virtual channel of the camera model as defined in the selected project (Frame Information). The list shows its number and name.", example: "0 – Front" },
     name: { doc: "Name of this virtual channel on the bench; shown in the tree.", example: "Front_VC0" },
-    debayer: { doc: "Debayer setting for the image data of this virtual channel. The list is maintained in File › Settings › Debayer configurations.", example: "RGGB" },
+    debayer: { doc: "Debayer configuration for the image data of this virtual channel: image size, input and output format (data size, bit depth, byte order, RAW/RGB/YUV with Bayer mask, channel order or YUV layout), conversion parameter, preferred/alternative device and IMAQ image type. The configurations are defined in File › Settings › Debayer configurations; the tester stores the name.", example: "RAW_RGGB_to_RGB" },
   },
   frameAnalysisWorker: {},
 };
