@@ -8,7 +8,7 @@ import { RANK, type Severity } from "./core/schema";
 import { guardClose, isDesktop, openFile, platformName, saveFile, setWindowTitle, storage } from "./platform";
 import { initialState, useAppStore } from "./state/store";
 import { Editor, type FocusRequest } from "./ui/Editor";
-import { AppLogo, Icon, NodeIcon } from "./ui/icons";
+import { AppLogo, Icon } from "./ui/icons";
 import { Menu, OverlayProvider, useOverlay, type MenuItem, type MenuState } from "./ui/overlays";
 import { BottomPanel, BuildGuide } from "./ui/Panels";
 import { Tree } from "./ui/Tree";
@@ -44,7 +44,8 @@ function Studio() {
   const [guideOpen, setGuideOpen] = useState(true);
   const [sidebarW, setSidebarW] = useState(310);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
-  const [tipOpen, setTipOpen] = useState(() => storage.get("vision-studio.tip") !== "dismissed");
+  const [revealAll, setRevealAll] = useState(false);              // show every issue (after Validate / Save / opening a file)
+  const [touched, setTouched] = useState<Set<string>>(new Set()); // inputs the user has edited or left
   const [dragOver, setDragOver] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState<boolean>(() => {
     const v = storage.get("vision-studio.details");
@@ -61,10 +62,33 @@ function Studio() {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // ---- gentle validation: only show what the user has touched, until they validate/save ---------
+  const visibleIssues = useMemo(() => {
+    if (revealAll) return issues;
+    const touchedNodes = new Set([...touched].map((k) => k.split(":")[1]));
+    const required = (i: Issue) => / is required$/.test(i.message);
+    return issues.filter((i) => {
+      if (i.field !== undefined && i.table === undefined)
+        return touched.has(`f:${i.nodeId}:${i.field}`) || (touchedNodes.has(i.nodeId) && !required(i));
+      if (i.table !== undefined && i.row !== undefined) {
+        if (i.column && touched.has(`c:${i.nodeId}:${i.table}:${i.row}:${i.column}`)) return true;
+        return !required(i) && [...touched].some((k) => k.startsWith(`c:${i.nodeId}:${i.table}:${i.row}:`));
+      }
+      return false; // node-level / cross-node findings wait for Validate
+    });
+  }, [issues, revealAll, touched]);
+  const markTouched = (id: string) => {
+    const a = parseInputId(id, selected.id);
+    if (!a) return;
+    const key = a.kind === "field" ? `f:${selected.id}:${a.key}` : `c:${selected.id}:${a.tableId}:${a.row}:${a.column}`;
+    setTouched((t) => (t.has(key) ? t : new Set(t).add(key)));
+  };
+  const resetValidationView = (reveal: boolean) => { setRevealAll(reveal); setTouched(new Set()); };
+
   // ---- derived issue maps ------------------------------------------------
   const { subtreeSev, ownCount, byNode } = useMemo(() => {
     const byNode = new Map<string, Issue[]>();
-    for (const i of issues) byNode.set(i.nodeId, [...(byNode.get(i.nodeId) ?? []), i]);
+    for (const i of visibleIssues) byNode.set(i.nodeId, [...(byNode.get(i.nodeId) ?? []), i]);
     const ownCount = new Map<string, { count: number; sev: Severity }>();
     byNode.forEach((list, id) => ownCount.set(id, { count: list.length, sev: list.some((i) => i.severity === "error") ? "error" : "warning" }));
     const subtreeSev = new Map<string, Severity>();
@@ -76,7 +100,15 @@ function Studio() {
     };
     visit(root);
     return { subtreeSev, ownCount, byNode };
-  }, [issues, root]);
+  }, [visibleIssues, root]);
+  const guideSteps = useMemo(() => (revealAll ? steps : steps.map((s) => (s.status === "attention" ? { ...s, status: "todo" as const } : s))), [steps, revealAll]);
+  const guideComplete = steps.every((s) => s.status === "done" || s.status === "optional");
+  const wasComplete = useRef(guideComplete);
+  useEffect(() => { // fold the guide away once everything is done, giving the tree the space
+    if (guideComplete && !wasComplete.current) setGuideOpen(false);
+    if (!guideComplete && wasComplete.current) setGuideOpen(true);
+    wasComplete.current = guideComplete;
+  }, [guideComplete]);
   const nErr = issues.filter((i) => i.severity === "error").length;
   const nWarn = issues.length - nErr;
 
@@ -128,8 +160,6 @@ function Studio() {
     const node = opt.create();
     dispatch({ type: "add", parentId: parent.id, node });
     expand(parent.id);
-    toast(`Added ${nodeLabel(node)}`, "success");
-    if (tipOpen) dismissTip();
   };
 
   const deleteNode = async (node: CNode) => {
@@ -137,13 +167,12 @@ function Studio() {
     const n = [...walk(node)].length - 1;
     const r = await confirm({ title: "Delete node", danger: true, confirmLabel: "Delete",
       message: <>Delete <b>{nodeLabel(node)}</b>{n ? ` and its ${n} child node${n > 1 ? "s" : ""}` : ""}? You can undo this with {MOD}Z.</> });
-    if (r === "confirm") { dispatch({ type: "delete", id: node.id }); toast(`Deleted ${nodeLabel(node)}`); }
+    if (r === "confirm") dispatch({ type: "delete", id: node.id });
   };
 
   const duplicate = (node: CNode) => {
     if (!defOf(node).duplicable) return;
     dispatch({ type: "duplicate", id: node.id });
-    toast(`Duplicated ${nodeLabel(node)}`, "success");
   };
 
   const openContext = (node: CNode, x: number, y: number) => {
@@ -183,7 +212,6 @@ function Studio() {
     }));
   };
 
-  const dismissTip = () => { setTipOpen(false); storage.set("vision-studio.tip", "dismissed"); };
 
   // ---- issues / guide -------------------------------------------------------
   const gotoIssue = (i: Issue) => {
@@ -203,6 +231,7 @@ function Studio() {
   };
 
   const validate = () => {
+    setRevealAll(true);
     setBottomTab("problems");
     if (nErr) {
       toast(`Validation found ${nErr} error(s) and ${nWarn} warning(s)`, "error");
@@ -217,7 +246,7 @@ function Studio() {
       const doc = documentFromText(text);
       dispatch({ type: "load", doc, fileName: name, handle });
       setCollapsed(new Set());
-      if (doc.root.children.length) dismissTip();
+      resetValidationView(true);
       storage.remove(DRAFT_KEY);
       const n = validateTree(doc.root).filter((i) => i.severity === "error").length;
       toast(`Opened ${name ?? "file"}${n ? ` – ${n} validation error(s)` : ""}`, n ? "error" : "success");
@@ -231,7 +260,7 @@ function Studio() {
     dispatch({ type: "load", doc: newDocument(), fileName: null, handle: null });
     setCollapsed(new Set());
     storage.remove(DRAFT_KEY);
-    toast("New project – start with the project information");
+    resetValidationView(false);
   };
   const open = async () => {
     if (!(await askDiscard())) return;
@@ -244,12 +273,13 @@ function Studio() {
     if (!(await askDiscard())) return;
     dispatch({ type: "load", doc: documentFromJson(sample), fileName: null, handle: null });
     setCollapsed(new Set());
-    dismissTip();
-    toast("Loaded the sample project (save it under a new name)", "success");
+    resetValidationView(true);
+    toast("Loaded the sample project – save it under a new name", "success");
   };
 
   async function save(as: boolean): Promise<boolean> {
     const st = stateRef.current;
+    setRevealAll(true);
     const errs = validateTree(st.doc.root).filter((i) => i.severity === "error").length;
     if (errs) {
       const r = await confirm({ title: "Configuration has errors", confirmLabel: "Save anyway",
@@ -274,6 +304,7 @@ function Studio() {
     if (!draftOffer) return;
     try {
       dispatch({ type: "load", doc: documentFromJson(draftOffer.json), fileName: draftOffer.fileName, handle: null, dirty: true });
+      resetValidationView(true);
       toast("Restored your unsaved work", "success");
     } catch { toast("The recovery draft could not be restored", "error"); }
     setDraftOffer(null);
@@ -328,8 +359,6 @@ function Studio() {
     window.addEventListener("mouseup", up);
   };
 
-  const isNewProject = root.children.length === 0;
-
   return (
     <div className="app" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={onDrop}>
@@ -337,11 +366,22 @@ function Studio() {
       <header className="toolbar">
         <div className="brand"><AppLogo size={26} /><div><b>{APP}</b><span>Camera Configuration Editor</span></div></div>
         <div className="tb-group">
-          <TB icon="file" label="New" kbd={`${isDesktop ? MOD : "Alt+" + MOD}N`} onClick={newDoc} />
-          <TB icon="folder" label="Open" kbd={`${MOD}O`} onClick={open} />
+          <button className="tb" id="file-menu-btn" aria-haspopup="menu" onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenu({ x: r.left, y: r.bottom + 4, minWidth: 250, items: [
+              { label: "New project", icon: "file", shortcut: `${isDesktop ? MOD : "Alt+" + MOD}N`, onSelect: () => void newDoc() },
+              { label: "Open…", icon: "folder", shortcut: `${MOD}O`, onSelect: () => void open() },
+              { label: "Open sample project", icon: "sample", onSelect: () => void openSample() },
+              { kind: "separator" },
+              { label: "Save", icon: "save", shortcut: `${MOD}S`, onSelect: () => void save(false) },
+              { label: "Save As…", icon: "saveAs", shortcut: `${MOD}Shift+S`, onSelect: () => void save(true) },
+              { kind: "separator" },
+              { label: "Keyboard shortcuts", icon: "keyboard", onSelect: () => void confirm({ title: "Keyboard shortcuts", confirmLabel: "Close", cancelLabel: "OK", message: <Shortcuts /> }) },
+            ] });
+          }}>
+            <Icon name="menu" /><span>File</span><Icon name="chevronDown" size={13} />
+          </button>
           <TB icon="save" label="Save" kbd={`${MOD}S`} onClick={() => save(false)} accent={state.dirty} />
-          <TB icon="saveAs" label="Save As" kbd={`${MOD}Shift+S`} onClick={() => save(true)} iconOnly />
-          <TB icon="sample" label="Open sample project" onClick={openSample} iconOnly />
         </div>
         <div className="tb-group">
           <TB icon="undo" label="Undo" kbd={`${MOD}Z`} onClick={() => dispatch({ type: "undo" })} disabled={!state.past.length} iconOnly />
@@ -359,8 +399,9 @@ function Studio() {
           <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Dark theme" aria-checked={theme === "dark"} role="radio"><Icon name="moon" size={14} /><span>Dark</span></button>
           <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} title="Light theme" aria-checked={theme === "light"} role="radio"><Icon name="sun" size={14} /><span>Light</span></button>
         </div>
-        <TB icon="info" label="Details pane" kbd="F1" onClick={() => setDetailsOpen(!detailsOpen)} accent={detailsOpen} iconOnly />
-        <TB icon="keyboard" label="Keyboard shortcuts" onClick={() => confirm({ title: "Keyboard shortcuts", confirmLabel: "Close", cancelLabel: "OK", message: <Shortcuts /> })} iconOnly />
+        <button className={`tb tb-toggle ${detailsOpen ? "on" : ""}`} onClick={() => setDetailsOpen(!detailsOpen)} title="Show / hide the Details pane (F1)" aria-pressed={detailsOpen}>
+          <Icon name="info" /><span>Details</span>
+        </button>
       </header>
 
       {draftOffer && (
@@ -383,23 +424,17 @@ function Studio() {
           </div>
           <Tree root={root} selectedId={selected.id} collapsed={collapsed} severity={subtreeSev} ownCount={ownCount}
             onSelect={select} onToggle={toggle} onContext={openContext} onDelete={deleteNode} />
-          {tipOpen && (
-            <div className="tip">
-              <Icon name="mouse" size={18} />
-              <div><b>Build step by step</b><span>Right-click a node (or press <kbd>Shift+F10</kbd>) to add its children. Start by filling in the project information.</span></div>
-              <button className="icon-btn" onClick={dismissTip} title="Dismiss"><Icon name="x" size={14} /></button>
-            </div>
-          )}
-          <BuildGuide steps={steps} onStep={runStep} open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />
+          <BuildGuide steps={guideSteps} onStep={runStep} open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />
         </aside>
         <div className="sidebar-resizer" onMouseDown={startSidebarDrag} />
         <main className="content" onFocusCapture={(e) => {
           const a = parseInputId((e.target as HTMLElement).id ?? "", selected.id);
           if (a) setActiveInput(a);
-        }}>
+        }}
+          onChangeCapture={(e) => markTouched((e.target as HTMLElement).id ?? "")}
+          onBlurCapture={(e) => markTouched((e.target as HTMLElement).id ?? "")}>
           <Editor node={selected} idx={idx} issues={byNode.get(selected.id) ?? []} mutate={mutate} onNodeMenu={(n, x, y) => openContext(n, x, y)}
-            onSelect={select} focus={focus} toast={toast} />
-          {isNewProject && selected === root && <div className="welcome-note"><NodeIcon name="project" size={16} /> New project: only the project information exists so far. Add sections when you are ready.</div>}
+            onSelect={select} focus={focus} toast={toast} detailsOpen={detailsOpen} />
         </main>
         {detailsOpen && (
           <DetailsPane node={selected} idx={idx} issues={byNode.get(selected.id) ?? []} active={activeInput}
@@ -409,7 +444,7 @@ function Studio() {
 
       <BottomPanel tab={bottomTab} setTab={setBottomTab} height={bottomH} setHeight={setBottomH} issues={issues} idx={idx}
         onIssue={gotoIssue} previewNode={selected} wholeDoc={() => documentToText(state.doc)}
-        docJson={(n) => JSON.stringify(n === root ? documentToJson(state.doc) : nodeToJson(n), null, 2)} />
+        docJson={(n) => JSON.stringify(n === root ? documentToJson(state.doc) : nodeToJson(n), null, 2)} quiet={!revealAll} />
 
       <footer className="statusbar">
         <span className="status-item"><Icon name={isDesktop ? "desktop" : "globe"} size={13} />{platformName}</span>
@@ -419,6 +454,7 @@ function Studio() {
         <button className="status-item status-btn" onClick={() => setBottomTab("problems")}>
           <span className="dot dot-error" />{nErr} error{nErr === 1 ? "" : "s"}
           <span className="dot dot-warning" />{nWarn} warning{nWarn === 1 ? "" : "s"}
+          {!revealAll && issues.length > visibleIssues.length && <span className="muted"> · press F5 to show all</span>}
         </button>
       </footer>
 

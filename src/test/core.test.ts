@@ -234,3 +234,19 @@ describe("input documentation", () => {
     expect(resolveTable(byType(doc.root, "fault")[0], "embeddedLine")?.docId).toBe("elFault");
   });
 });
+
+describe("decluttered validation", () => {
+  it("a new project only reports its empty required fields – no 'nothing added yet' warnings", () => {
+    const doc = newDocument();
+    const msgs = validateTree(doc.root).map((i) => i.message);
+    expect(msgs.every((m) => / is required$/.test(m))).toBe(true);
+  });
+  it("wide tables list valid primary columns", () => {
+    for (const def of Object.values(DEFS)) for (const t of def.tables ?? []) {
+      if (!t.primary) continue;
+      const keys = t.columns.map((c) => c.key);
+      t.primary.forEach((k) => expect(keys, `${t.title}.${k}`).toContain(k));
+      expect(t.primary.length).toBeLessThan(keys.length);
+    }
+  });
+});

@@ -20,6 +20,7 @@ export interface EditorProps {
   onSelect: (id: string) => void;
   focus: FocusRequest | null;
   toast: (t: string, k?: "info" | "success" | "error") => void;
+  detailsOpen: boolean;            // the Details pane documents inputs → keep the form free of helper text
 }
 
 /** Registry: node type → custom section renderer (falls back to the generic tables). */
@@ -41,12 +42,14 @@ export function Editor(props: EditorProps) {
   useEffect(() => {
     if (!focus || focus.issue.nodeId !== node.id) return;
     const i = focus.issue;
+    if (i.table !== undefined && i.row !== undefined)
+      window.dispatchEvent(new CustomEvent("cce:select-row", { detail: { tableId: i.table, row: i.row } }));
     const t = setTimeout(() => {
       const id = i.table !== undefined && i.row !== undefined ? `c-${i.table}-${i.row}-${i.column ?? defOf(node).tables?.[0]?.columns[0].key}` : i.field ? `f-${node.id}-${i.field}` : null;
       let el = id ? document.getElementById(id) : null;
       if (!el && i.table !== undefined && i.row !== undefined) el = document.querySelector(`[id^="c-${CSS.escape(i.table)}-${i.row}-"]`);
       if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); (el as HTMLElement).focus({ preventScroll: true }); }
-    }, 60);
+    }, 140);
     return () => clearTimeout(t);
   }, [focus, node]);
 
@@ -72,23 +75,19 @@ export function Editor(props: EditorProps) {
         ))}
       </nav>
       <div className="editor-scroll" key={node.id}>
-        <header className="editor-head">
-          <div className="editor-icon"><NodeIcon name={def.icon} size={44} /></div>
-          <div>
-            <div className="editor-title-row">
-              <h2>{nodeLabel(node)}</h2>
-              {nodeLabel(node) !== def.title && <span className="type-pill">{def.title}</span>}
-            </div>
-            <p className="muted">{def.description}</p>
-          </div>
+        <header className="editor-head compact">
+          <NodeIcon name={def.icon} size={26} />
+          <h2>{nodeLabel(node)}</h2>
+          {nodeLabel(node) !== def.title && <span className="type-pill">{def.title}</span>}
         </header>
+        {!props.detailsOpen && <p className="muted editor-desc">{def.description}</p>}
 
         <Banner issues={issues} />
 
         {def.fields && (
           <section className="card">
             <h3 className="card-title">Parameters</h3>
-            <FieldForm nodeId={node.id} fields={def.fields} params={node.params} issues={issues} onChange={onField} />
+            <FieldForm nodeId={node.id} fields={def.fields} params={node.params} issues={issues} onChange={onField} showHelp={!props.detailsOpen} />
           </section>
         )}
 
@@ -120,59 +119,53 @@ export function Editor(props: EditorProps) {
           </section>
         )}
 
-        {opts.length > 0 && <NextHint node={node} opts={opts} onNodeMenu={props.onNodeMenu} />}
+        {node.children.length === 0 && opts.some((o) => o.enabled) && <NextHint node={node} opts={opts} onNodeMenu={props.onNodeMenu} />}
       </div>
     </div>
   );
 }
 
+/** Banner for findings that are not attached to a visible input (cross-node checks).
+ *  Field and cell problems are shown inline, so they only get a one-line count here. */
 function Banner({ issues }: { issues: Issue[] }) {
   const [open, setOpen] = useState(false);
+  const nodeLevel = issues.filter((i) => i.field === undefined && (i.table === undefined || i.row === undefined));
+  const inline = issues.length - nodeLevel.length;
   if (!issues.length) return null;
-  const errs = issues.filter((i) => i.severity === "error");
-  const warns = issues.filter((i) => i.severity === "warning");
-  const sev = errs.length ? "error" : "warning";
-  const list = [...errs, ...warns];
+  if (!nodeLevel.length) {
+    const errs = issues.filter((i) => i.severity === "error").length;
+    return (
+      <div className={`banner-mini ${errs ? "sev-error" : "sev-warning"}`} role="status">
+        <Icon name={errs ? "error" : "alert"} size={14} />
+        {inline} input{inline > 1 ? "s" : ""} need{inline > 1 ? "" : "s"} attention – marked below
+      </div>
+    );
+  }
+  const sev = nodeLevel.some((i) => i.severity === "error") ? "error" : "warning";
+  const list = [...nodeLevel].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1));
   const shown = open ? list : list.slice(0, 3);
   return (
     <div className={`banner banner-${sev}`} role="status">
-      <Icon name={sev === "error" ? "error" : "alert"} size={18} />
+      <Icon name={sev === "error" ? "error" : "alert"} size={16} />
       <div className="banner-body">
-        <b>{[errs.length && `${errs.length} error${errs.length > 1 ? "s" : ""}`, warns.length && `${warns.length} warning${warns.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ")}</b>
         <ul>{shown.map((i, n) => <li key={n} className={`li-${i.severity}`}>{i.message}</li>)}</ul>
         {list.length > 3 && <button className="link" onClick={() => setOpen(!open)}>{open ? "Show less" : `Show all ${list.length}`}</button>}
+        {inline > 0 && <span className="muted small">{inline} more marked on the inputs below.</span>}
       </div>
     </div>
   );
 }
 
-/** Read-only guidance: what can be added here. Adding itself happens in the node's right-click menu. */
+/** Read-only guidance for empty nodes. Adding itself happens in the node's right-click menu. */
 function NextHint({ node, opts, onNodeMenu }: { node: CNode; opts: ChildOption[]; onNodeMenu: (n: CNode, x: number, y: number) => void }) {
-  const open = opts.filter((o) => o.enabled);
-  const first = node.children.length === 0;
   return (
-    <section className={`card hint-card ${first && open.length ? "hint-next" : ""}`}
-      onContextMenu={(e) => { e.preventDefault(); onNodeMenu(node, e.clientX, e.clientY); }}>
-      <div className="hint-icon"><Icon name="mouse" size={18} /></div>
-      <div className="hint-body">
-        <b>{open.length ? (first ? "Next step" : "More can be added here") : "Complete"}</b>
-        <p className="muted">
-          {open.length
-            ? <>Right-click <b>“{nodeLabel(node)}”</b> in the tree (or press <kbd>Shift+F10</kbd>) to add:</>
-            : <>Everything that can be added to <b>“{nodeLabel(node)}”</b> already exists. Use the right-click menu to duplicate or delete nodes.</>}
-        </p>
-        {open.length > 0 && (
-          <div className="hint-chips">
-            {opts.map((o) => (
-              <span key={o.label} className={`hint-chip ${o.enabled ? "" : "done"}`} title={o.enabled ? o.description : o.reason}>
-                <NodeIcon name={o.icon} size={14} />{o.label.replace(/^Add /, "")}
-                {!o.enabled && <Icon name="tick" size={12} />}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+    <div className="hint-line" onContextMenu={(e) => { e.preventDefault(); onNodeMenu(node, e.clientX, e.clientY); }}>
+      <Icon name="mouse" size={15} />
+      <span>Next: right-click <b>{nodeLabel(node)}</b> in the tree to add</span>
+      {opts.filter((o) => o.enabled).map((o) => (
+        <span key={o.label} className="hint-chip" title={o.description}><NodeIcon name={o.icon} size={13} />{o.label.replace(/^Add /, "")}</span>
+      ))}
+    </div>
   );
 }
 

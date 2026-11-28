@@ -40,11 +40,12 @@ export function BuildGuide({ steps, onStep, open, onToggle }: {
   );
 }
 
-export function BottomPanel({ tab, setTab, height, setHeight, issues, idx, onIssue, previewNode, wholeDoc, docJson }: {
+export function BottomPanel({ tab, setTab, height, setHeight, issues, idx, onIssue, previewNode, wholeDoc, docJson, quiet }: {
   tab: "problems" | "json" | null; setTab: (t: "problems" | "json" | null) => void;
   height: number; setHeight: (h: number) => void;
   issues: Issue[]; idx: TreeIndex; onIssue: (i: Issue) => void;
   previewNode: CNode; wholeDoc: () => string; docJson: (n: CNode) => string;
+  quiet?: boolean;            // before the first validation: neutral count instead of red
 }) {
   const [scope, setScope] = useState<"node" | "doc">("node");
   const errs = issues.filter((i) => i.severity === "error").length;
@@ -72,7 +73,7 @@ export function BottomPanel({ tab, setTab, height, setHeight, issues, idx, onIss
       <div className="bottom-tabs">
         <button className={`tab ${tab === "problems" ? "active" : ""}`} onClick={() => setTab(tab === "problems" ? null : "problems")}>
           <Icon name="alert" size={14} />Problems
-          {issues.length > 0 && <span className={`count ${errs ? "count-err" : "count-warn"}`}>{issues.length}</span>}
+          {issues.length > 0 && <span className={`count ${quiet ? "count-quiet" : errs ? "count-err" : "count-warn"}`}>{issues.length}</span>}
         </button>
         <button className={`tab ${tab === "json" ? "active" : ""}`} onClick={() => setTab(tab === "json" ? null : "json")}>
           <Icon name="code" size={14} />JSON Preview

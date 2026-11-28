@@ -103,6 +103,7 @@ export interface TableSpec {
   help?: string;
   icon?: string;              // node-icon name shown beside the table title / tab
   docId?: string;             // key into TABLE_DOCS (table keys are not unique across nodes)
+  primary?: string[];         // columns shown in the grid; the rest go to the row drawer
   factory?: (rows: Json[]) => Json;
 }
 

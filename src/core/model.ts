@@ -183,7 +183,7 @@ export const EMBEDDED_INFO_TABLE: TableSpec = {
 };
 
 export const EL_FAULT_TABLE: TableSpec = {
-  key: "embeddedLine", title: "Embedded Line Injection", docId: "elFault", icon: "inject", addLabel: "Add Fault", itemName: "EL fault",
+  key: "embeddedLine", title: "Embedded Line Injection", docId: "elFault", primary: ["faultName", "virtualChannel", "lineNumber", "position", "length", "mode", "faultValues", "operation"], icon: "inject", addLabel: "Add Fault", itemName: "EL fault",
   help: "Corrupt specific bytes inside the CSI-2 embedded line (e.g. over-temperature injection).",
   columns: [
     { key: "faultName", label: "Fault Name", default: "", width: 180 },
@@ -209,7 +209,7 @@ export const EL_FAULT_TABLE: TableSpec = {
 };
 
 export const I2C_FAULT_TABLE: TableSpec = {
-  key: "i2c", title: "I2C Injection", docId: "i2cFault", icon: "ic", addLabel: "Add Fault", itemName: "I2C fault",
+  key: "i2c", title: "I2C Injection", docId: "i2cFault", primary: ["faultName", "slaveAdress", "i2cMode", "registerAdress", "commandType", "faultValues"], icon: "ic", addLabel: "Add Fault", itemName: "I2C fault",
   help: "Intercept SerDes or sensor I2C transactions.",
   columns: [
     { key: "faultName", label: "Fault Name", default: "", width: 200 },
@@ -231,7 +231,7 @@ export const I2C_FAULT_TABLE: TableSpec = {
 const REG_LIST: Partial<FieldSpec> = { kind: "intlist", min: 0, max: 255, hex: true, default: [0, 0], width: 120 };
 
 export const REGISTER_MONITOR_TABLE: TableSpec = {
-  key: "register_monitor", title: "Register Monitor", docId: "registerMonitor", icon: "ic", addLabel: "Add Monitor", itemName: "Register monitor",
+  key: "register_monitor", title: "Register Monitor", docId: "registerMonitor", primary: ["Slave Address", "Register(s)", "Mask", "Expectation", "Link Options", "Bit Mode"], icon: "ic", addLabel: "Add Monitor", itemName: "Register monitor",
   columns: [
     { key: "Mode", label: "Mode", kind: "enum", options: MONITOR_MODES, default: "Read", width: 80 },
     { key: "Slave Address", label: "Slave Addr.", ...ADDR, default: 0x51, width: 90 } as FieldSpec,
@@ -258,7 +258,7 @@ export const ERROR_COUNT_TABLE: TableSpec = {
 };
 
 export const TEMPERATURE_MONITOR_TABLE: TableSpec = {
-  key: "temperature_monitor", title: "Temperature Monitor", docId: "temperatureMonitor", icon: "gauge", addLabel: "Add Sensor", itemName: "Temperature monitor",
+  key: "temperature_monitor", title: "Temperature Monitor", docId: "temperatureMonitor", primary: ["Slave Address", "Register(s)_IntegerBit", "Register(s)_FractionBit", "Min Limit", "Max Limit", "Link Options"], icon: "gauge", addLabel: "Add Sensor", itemName: "Temperature monitor",
   columns: [
     { key: "Mode", label: "Mode", kind: "enum", options: MONITOR_MODES, default: "Read", width: 80 },
     { key: "Slave Address", label: "Slave Addr.", ...ADDR, default: 0x35, width: 90 } as FieldSpec,
@@ -351,10 +351,7 @@ export const DEFS: Record<NodeType, NodeDef> = {
       const e = n.params.emailAddress;
       if (CORPORATE_EMAIL_DOMAIN && typeof e === "string" && RE_EMAIL.test(e) && !e.toLowerCase().endsWith("@" + CORPORATE_EMAIL_DOMAIN))
         out.push(issue(WARNING, `Email Address should be a corporate address (*@${CORPORATE_EMAIL_DOMAIN})`, n, { field: "emailAddress" }));
-      const modes = findChild(n, "modes");
-      if (!modes || !modes.children.length) out.push(issue(WARNING, "No project modes defined yet – right-click the project and add Project Modes", n));
-      const cams = findChild(n, "cameras");
-      if (!cams || !cams.children.length) out.push(issue(WARNING, "No camera models defined yet – add Camera Models", n));
+      // Missing sections are not validation issues – the build guide tracks what is left to add.
       return out;
     },
   },
