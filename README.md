@@ -83,6 +83,7 @@ The exe reads `VisionStudio.ini` from its own folder (template: `config/vision-s
 [app]
 mode = desktop        ; desktop = own window, web = serve the editor to a browser
 ui_config = ui_config.json   ; dropdown lists (File › Settings), may be a network path
+project_dir = ../../configurations/project_configuration   ; where Save writes the configurations
 
 [desktop]
 width = 1440
@@ -95,7 +96,7 @@ port = 8080
 open_browser = true
 ```
 
-* **desktop**: the editor opens in a native window with native Open/Save dialogs.
+* **desktop**: the editor opens in a native window.
 * **web**: the exe serves the UI embedded in it over HTTP (no extra files) and opens the
   browser. A tray icon offers *Open Vision Studio in browser* and *Quit*. With
   `host = 0.0.0.0`, colleagues can open `http://<your-pc>:8080/`; allow the port in
@@ -111,13 +112,32 @@ open_browser = true
 * The installer (`installer` option) installs per user and puts `vision-studio.ini` next
   to the program, so it can be edited without admin rights.
 
-### Web vs. desktop file handling
+### Saving and opening: the project folder
 
-| | Desktop (Tauri) | Web: Chrome / Edge | Web: Firefox / Safari |
+**Save** never asks for a file name. It writes `<Project Name>_v<version>.json` into the
+project folder, `[app] project_dir` of the INI (default
+`../../configurations/project_configuration`, resolved against the INI's folder and created
+on the first save).
+
+* **The name:** project `sample` with version `V.1.0.0` gives `sample_v1.0.0.json`.
+  Characters Windows doesn't allow in file names become `_`.
+* **Saving again** replaces the file that is open, without asking.
+* **Another version:** if you change the project name or version, the next Save writes a
+  new file and keeps the old one. The file chip in the toolbar shows `old → new` until then.
+* **Replacing a different file:** if the folder already has a file with that name and it
+  isn't the one you opened, Vision Studio asks before replacing it.
+* **File › Open** lists the configurations in the folder, newest first, with a filter.
+  *Browse…* opens a file from anywhere else; saving it then writes into the project folder.
+
+| | Desktop | Web mode, on the PC running Vision Studio | Web mode, another PC / plain browser |
 | --- | --- | --- | --- |
-| Open | Native dialog | File picker | File picker |
-| Save | Writes the file in place | Writes the file in place (File System Access API) | Downloads the `.json` |
+| Save | Writes to the project folder | Writes to the project folder | Downloads `<project>_v<version>.json` |
+| Open | Folder list + *Browse…* | Folder list + *Browse…* (browser file picker) | Folder list (web mode) / file picker |
 | Close with unsaved changes | Confirmation dialog | Browser "leave page" prompt | Browser prompt |
+
+The folder is only reachable by plain file names (no paths), files are written atomically,
+and the web API refuses saves from other PCs, the same rule as for `ui_config.json`. Code:
+`src-tauri/src/projects.rs`, `src/core/filename.ts`.
 
 In both versions you can drag a `.json` file onto the window to open it. Unsaved work is
 autosaved as a recovery draft, and you're offered a restore the next time you open the app.
@@ -133,8 +153,8 @@ autosaved as a recovery draft, and you're offered a restore the next time you op
 4. On the camera, add **Hardware** (Capture / Passthrough boards; *Auto 1:1* adds GPIO
    routing), **Frame Information** (virtual channels, frame outputs, embedded lines), and
    optionally **Fault Injection** and **I2C Monitoring**.
-5. Press **F5** to validate and **Ctrl+S** to save. New, Open, Open sample project and
-   Save As are in the **File** menu.
+5. Press **F5** to validate and **Ctrl+S** to save to `<project>_v<version>.json` in the
+   project folder. New, Open and Open sample project are in the **File** menu.
 
 The **Build guide** in the sidebar tracks these steps with a progress bar. Clicking a step
 selects the node that needs work and opens its right-click menu, or jumps to the node

@@ -241,3 +241,99 @@ export async function saveUiConfig(state: UiConfigState, text: string): Promise<
   if (r.status === 409 && body?.current) throw new UiConfigConflict(body.message, fromDto("server", { ...body.current, canSave: state.canSave }));
   throw new Error(body?.message ?? `Saving failed (HTTP ${r.status})`);
 }
+
+// ---------------------------------------------------------------------------
+// Project folder – File › Save writes <project>_v<version>.json there
+//   desktop: [app] project_dir of the INI, written by the native app
+//   server:  web mode – listed/opened by any browser, saved only from this PC
+//   browser: no backend (dev server, static hosting) – Save downloads the file
+// ---------------------------------------------------------------------------
+export interface ProjectEntry { name: string; modified: number | null; size: number }
+export interface ProjectListing {
+  backend: "desktop" | "server";
+  dir: string;
+  files: ProjectEntry[];
+  canSave: boolean;
+  error: string | null;
+}
+/** Handle of a document that lives in the project folder. */
+export interface ProjectHandle { project: string }
+export const isProjectHandle = (h: unknown): h is ProjectHandle =>
+  !!h && typeof h === "object" && typeof (h as ProjectHandle).project === "string";
+
+export class ProjectFileError extends Error {
+  constructor(public kind: string, message: string) { super(message); }
+}
+const toError = (e: unknown) => {
+  const x = e as { kind?: string; message?: string };
+  return new ProjectFileError(x?.kind ?? "io", x?.message ?? String(e));
+};
+
+/** The project folder, or null when there is no backend (plain browser). */
+export async function listProjects(): Promise<ProjectListing | null> {
+  if (isDesktop) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return { backend: "desktop", ...(await invoke<Omit<ProjectListing, "backend">>("projects_list")) };
+  }
+  try {
+    const r = await fetch("api/projects", { cache: "no-store" });
+    if (r.ok && (r.headers.get("content-type") ?? "").includes("application/json")) {
+      const l = await r.json();
+      if (l && typeof l.dir === "string" && Array.isArray(l.files)) return { backend: "server", ...l };
+    }
+  } catch { /* no backend */ }
+  return null;
+}
+
+export async function readProject(listing: ProjectListing, name: string): Promise<string> {
+  if (listing.backend === "desktop") {
+    const { invoke } = await import("@tauri-apps/api/core");
+    try { return await invoke<string>("project_read", { name }); } catch (e) { throw toError(e); }
+  }
+  const r = await fetch(`api/projects/${encodeURIComponent(name)}`, { cache: "no-store" });
+  if (r.ok) return r.text();
+  throw toError(await r.json().catch(() => ({ message: `HTTP ${r.status}` })));
+}
+
+/** Save into the folder. Throws ProjectFileError kind "exists" unless `overwrite`. */
+export async function saveProject(listing: ProjectListing, name: string, text: string, overwrite: boolean): Promise<{ name: string; path: string }> {
+  if (listing.backend === "desktop") {
+    const { invoke } = await import("@tauri-apps/api/core");
+    try { return await invoke("project_save", { name, text, overwrite }); } catch (e) { throw toError(e); }
+  }
+  const r = await fetch(`api/projects/${encodeURIComponent(name)}${overwrite ? "?overwrite=1" : ""}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Vision-Studio": "1" },
+    body: JSON.stringify({ text }),
+  });
+  const body = await r.json().catch(() => null);
+  if (r.ok) return body;
+  throw toError(body ?? { message: `Saving failed (HTTP ${r.status})` });
+}
+
+/** No folder to write to (plain browser, or another PC in web mode): download `name`. */
+export async function downloadJson(text: string, name: string): Promise<boolean> {
+  const dl = await hostDownloads;
+  if (dl) {
+    try {
+      await dl.save({ filename: name, data: text });
+      return true;
+    } catch (e: any) {
+      if (e?.code === "declined" || e?.code === "rate_limited") return false;
+    }
+  }
+  download(text, name);
+  return true;
+}
+
+/** Desktop: pick a JSON file anywhere, starting in the project folder. */
+export async function browseFile(startDir?: string): Promise<OpenResult | null> {
+  if (isDesktop) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+    const path = await open({ multiple: false, directory: false, filters: [JSON_FILTER], defaultPath: startDir });
+    if (!path || Array.isArray(path)) return null;
+    return { text: await readTextFile(path as string), name: baseName(path as string), handle: path };
+  }
+  return openFile();
+}

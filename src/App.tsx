@@ -6,7 +6,8 @@ import {
 } from "./core/model";
 import { RANK, type Severity } from "./core/schema";
 import {
-  guardClose, isDesktop, loadUiConfig, openFile, platformName, saveFile, saveUiConfig, setWindowTitle, storage,
+  browseFile, downloadJson, guardClose, isDesktop, isProjectHandle, listProjects, loadUiConfig, platformName, ProjectFileError,
+  readProject, saveProject, saveUiConfig, setWindowTitle, storage, type ProjectListing,
   UiConfigConflict, type UiConfigState,
 } from "./platform";
 import { initialState, useAppStore } from "./state/store";
@@ -19,6 +20,8 @@ import { DetailsPane, parseInputId, type ActiveInput } from "./ui/DetailsPane";
 import sample from "./assets/sample.json";
 import { applyRenames, catalogUsage, defaultCatalog, normalizeCatalog, usageKey, type Catalog, type Rename, type SettingsSection } from "./core/catalog";
 import { SettingsWindow } from "./ui/Settings";
+import { OpenDialog } from "./ui/OpenDialog";
+import { projectFileName } from "./core/filename";
 
 const APP = "Vision Studio";
 const DRAFT_KEY = "vision-studio.draft";
@@ -46,6 +49,8 @@ function Studio() {
   const [catalog, setCatalog] = useState<Catalog>(loadCatalog);
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
   const [uiFile, setUiFile] = useState<UiConfigState | null>(null);   // where the lists live (ui_config.json)
+  const [projects, setProjects] = useState<ProjectListing | null>(null); // the project folder (null = plain browser)
+  const [openList, setOpenList] = useState<ProjectListing | null>(null); // File › Open dialog
   const issues = useMemo(() => validateTree(root, idx, catalog), [root, idx, catalog]);
   const steps = useMemo(() => computeSteps(root, issues, idx), [root, issues, idx]);
   const selected = idx.get(state.selectedId) ?? root;
@@ -240,7 +245,7 @@ function Studio() {
       confirmLabel: "Save", extraLabel: "Don't save",
     });
     if (r === "extra") return true;
-    if (r === "confirm") return save(false);
+    if (r === "confirm") return save();
     return false;
   }, [confirm]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -363,11 +368,28 @@ function Studio() {
     storage.remove(DRAFT_KEY);
     resetValidationView(false);
   };
+  const refreshProjects = async () => {
+    try { const l = await listProjects(); setProjects(l); return l; } catch { return null; }
+  };
+  useEffect(() => { void refreshProjects(); }, []);
+  const browse = async () => {
+    setOpenList(null);
+    try {
+      const r = await browseFile(projects?.files.length ? projects.dir : undefined); // the folder exists once something was saved
+      if (r) load(r.text, r.name, r.handle);
+    } catch (e) { toast(`Open failed: ${(e as Error).message}`, "error"); }
+  };
   const open = async () => {
     if (!(await askDiscard())) return;
+    const l = await refreshProjects();
+    if (l) setOpenList(l); else await browse();
+  };
+  const openFromFolder = async (name: string) => {
+    const l = openList;
+    setOpenList(null);
+    if (!l) return;
     try {
-      const r = await openFile();
-      if (r) load(r.text, r.name, r.handle);
+      load(await readProject(l, name), name, { project: name });
     } catch (e) { toast(`Open failed: ${(e as Error).message}`, "error"); }
   };
   const openSample = async () => {
@@ -375,10 +397,10 @@ function Studio() {
     dispatch({ type: "load", doc: documentFromJson(sample), fileName: null, handle: null });
     setCollapsed(new Set());
     resetValidationView(true);
-    toast("Loaded the sample project – save it under a new name", "success");
+    toast("Loaded the sample project – give it your project name and version before saving", "success");
   };
 
-  async function save(as: boolean): Promise<boolean> {
+  async function save(): Promise<boolean> {
     const st = stateRef.current;
     setRevealAll(true);
     const errs = validateTree(st.doc.root, new TreeIndex(st.doc.root), catalogRef.current).filter((i) => i.severity === "error").length;
@@ -387,13 +409,36 @@ function Studio() {
         message: `${errs} validation error(s) remain. The file will not conform to the schema until they are fixed.` });
       if (r !== "confirm") { setBottomTab("problems"); return false; }
     }
-    const name = st.fileName ?? `${st.doc.root.params.project || "project"}.json`;
+    // The name always comes from the project: <project>_v<version>.json in the project folder.
+    const name = projectFileName(st.doc.root.params);
+    const text = documentToText(st.doc);
     try {
-      const r = await saveFile(documentToText(st.doc), name, st.fileHandle, as);
-      if (!r) return false;
-      dispatch({ type: "saved", fileName: r.name, handle: r.handle });
+      const folder = await refreshProjects();
+      if (!folder || !folder.canSave) { // plain browser, or another PC in web mode
+        if (!(await downloadJson(text, name))) return false;
+        dispatch({ type: "saved", fileName: name, handle: null });
+        storage.remove(DRAFT_KEY);
+        toast(folder ? `Downloaded ${name} – only the PC running Vision Studio saves to ${folder.dir}` : `Downloaded ${name}`, "success");
+        return true;
+      }
+      // Re-saving the file that is open replaces it; any other file of that name needs a yes.
+      const own = isProjectHandle(st.fileHandle) && st.fileHandle.project.toLowerCase() === name.toLowerCase();
+      const askReplace = async () => (await confirm({ title: `Replace ${name}?`, confirmLabel: "Replace", danger: true,
+          message: <>A configuration for project <b>{String(st.doc.root.params.project || "Untitled")}</b> version <b>{String(st.doc.root.params.version || "–")}</b> is already saved in <code>{folder.dir}</code>. Replace it with this one? To keep both, change the project version first.</> })) === "confirm";
+      const exists = folder.files.some((f) => f.name.toLowerCase() === name.toLowerCase());
+      if (exists && !own && !(await askReplace())) return false;
+      let saved;
+      try {
+        saved = await saveProject(folder, name, text, own || exists);
+      } catch (e) { // created by someone else since the folder was listed
+        if (!(e instanceof ProjectFileError) || e.kind !== "exists") throw e;
+        if (!(await askReplace())) return false;
+        saved = await saveProject(folder, name, text, true);
+      }
+      dispatch({ type: "saved", fileName: saved.name, handle: { project: saved.name } });
       storage.remove(DRAFT_KEY);
-      toast(r.downloaded ? `Downloaded ${r.name}` : `Saved ${r.name}`, "success");
+      void refreshProjects();
+      toast(`Saved ${saved.path}`, "success");
       return true;
     } catch (e) {
       toast(`Save failed: ${(e as Error).message}`, "error");
@@ -415,7 +460,7 @@ function Studio() {
   // ---- keyboard shortcuts ---------------------------------------------------------
   const handlers = useRef<Record<string, () => void>>({});
   handlers.current = {
-    save: () => void save(false), saveAs: () => void save(true), open: () => void open(), new: () => void newDoc(),
+    save: () => void save(), open: () => void open(), new: () => void newDoc(),
     undo: () => dispatch({ type: "undo" }), redo: () => dispatch({ type: "redo" }), validate,
     duplicate: () => duplicate(selected),
     details: () => setDetailsOpen((o) => !o),
@@ -431,7 +476,7 @@ function Studio() {
       if (e.key === "F5" || (mod && e.key === "Enter")) return run("validate");
       if (e.key === "F1") { e.preventDefault(); h.details(); return; }
       if (!mod) { if (e.key === "Insert") { e.preventDefault(); h.menu(); } return; }
-      if (k === "s") return run(e.shiftKey ? "saveAs" : "save");
+      if (k === "s") return run("save");
       if (k === "o") return run("open");
       if (k === "n" && (e.altKey || isDesktop)) return run("new");
       if (k === "z" && !e.shiftKey) { e.preventDefault(); h.undo(); return; }
@@ -462,6 +507,10 @@ function Studio() {
     window.addEventListener("mouseup", up);
   };
 
+  const targetName = projectFileName(root.params);
+  const renamed = !!state.fileName && isProjectHandle(state.fileHandle) && state.fileName.toLowerCase() !== targetName.toLowerCase();
+  const sep = projects?.dir.includes("\\") ? "\\" : "/";
+
   return (
     <div className="app" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={onDrop}>
@@ -476,8 +525,7 @@ function Studio() {
               { label: "Open…", icon: "folder", shortcut: `${MOD}O`, onSelect: () => void open() },
               { label: "Open sample project", icon: "sample", onSelect: () => void openSample() },
               { kind: "separator" },
-              { label: "Save", icon: "save", shortcut: `${MOD}S`, onSelect: () => void save(false) },
-              { label: "Save As…", icon: "saveAs", shortcut: `${MOD}Shift+S`, onSelect: () => void save(true) },
+              { label: `Save as ${targetName}`, icon: "save", shortcut: `${MOD}S`, onSelect: () => void save() },
               { kind: "separator" },
               { label: "Settings…", icon: "gear", shortcut: `${MOD},`, onSelect: () => setSettingsAt("features") },
               { kind: "separator" },
@@ -486,7 +534,8 @@ function Studio() {
           }}>
             <Icon name="menu" /><span>File</span><Icon name="chevronDown" size={13} />
           </button>
-          <TB icon="save" label="Save" kbd={`${MOD}S`} onClick={() => save(false)} accent={state.dirty} />
+          <TB icon="save" label="Save" kbd={`${MOD}S`} onClick={() => save()} accent={state.dirty}
+            title={`Save ${projects?.canSave ? `to ${projects.dir}${sep}${targetName}` : `(download ${targetName})`} (${MOD}S)`} />
         </div>
         <div className="tb-group">
           <TB icon="undo" label="Undo" kbd={`${MOD}Z`} onClick={() => dispatch({ type: "undo" })} disabled={!state.past.length} iconOnly />
@@ -496,9 +545,12 @@ function Studio() {
           <TB icon="check" label="Validate" kbd="F5" onClick={validate} />
         </div>
         <span className="spacer" />
-        <div className="file-chip" title={state.fileName ?? "Not saved yet"}>
+        <div className="file-chip" title={renamed
+          ? `Open: ${state.fileName}. Project name or version changed – Save writes ${targetName} (the old file is kept)`
+          : projects?.canSave ? `${projects.dir}${sep}${targetName}` : targetName}>
           {state.dirty && <span className="dirty-dot" title="Unsaved changes" />}
-          <span>{state.fileName ?? "Untitled"}</span>
+          {renamed && <><span className="file-old">{state.fileName}</span><Icon name="chevronRight" size={12} /></>}
+          <span>{targetName}</span>
         </div>
         <div className="seg theme-seg" role="radiogroup" aria-label="Appearance">
           <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Dark theme" aria-checked={theme === "dark"} role="radio"><Icon name="moon" size={14} /><span>Dark</span></button>
@@ -564,6 +616,8 @@ function Studio() {
       </footer>
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
+      {openList && <OpenDialog listing={openList} current={isProjectHandle(state.fileHandle) ? state.fileHandle.project : null}
+        onOpen={(n) => void openFromFolder(n)} onBrowse={() => void browse()} onClose={() => setOpenList(null)} />}
       {settingsAt && (
         <SettingsWindow key={uiFile?.modified ?? 0} catalog={catalog} usage={catalogUsage(root)} initialSection={settingsAt}
           storage={uiFile} onReload={() => void reloadUiConfig(true)}
@@ -574,13 +628,13 @@ function Studio() {
   );
 }
 
-function TB({ icon, label, kbd, onClick, disabled, iconOnly, accent, danger }: {
+function TB({ icon, label, kbd, onClick, disabled, iconOnly, accent, danger, title }: {
   icon: Parameters<typeof Icon>[0]["name"]; label: string; kbd?: string; onClick: () => void;
-  disabled?: boolean; iconOnly?: boolean; accent?: boolean; danger?: boolean;
+  disabled?: boolean; iconOnly?: boolean; accent?: boolean; danger?: boolean; title?: string;
 }) {
   return (
     <button className={`tb ${iconOnly ? "tb-icon" : ""} ${accent ? "tb-accent" : ""} ${danger ? "tb-danger" : ""}`} onClick={onClick}
-      disabled={disabled} title={kbd ? `${label} (${kbd})` : label} aria-label={label}>
+      disabled={disabled} title={title ?? (kbd ? `${label} (${kbd})` : label)} aria-label={label}>
       <Icon name={icon} />{!iconOnly && <span>{label}</span>}
     </button>
   );
@@ -588,7 +642,7 @@ function TB({ icon, label, kbd, onClick, disabled, iconOnly, accent, danger }: {
 
 function Shortcuts() {
   const rows: Array<[string, string]> = [
-    [`${isDesktop ? MOD : "Alt+" + MOD}N`, "New project"], [`${MOD}O`, "Open"], [`${MOD}S`, "Save"], [`${MOD}Shift+S`, "Save As"],
+    [`${isDesktop ? MOD : "Alt+" + MOD}N`, "New project"], [`${MOD}O`, "Open"], [`${MOD}S`, "Save (<project>_v<version>.json)"],
     [`${MOD}Z / ${MOD}Y`, "Undo / Redo"], ["F5 or " + MOD + "Enter", "Validate"], ["Right-click / Shift+F10 / Insert", "Node menu: add, duplicate, delete"],
     ["F1", "Show / hide the Details pane"], [`${MOD},`, "Settings (dropdown lists)"], ["↑ ↓ ← →", "Navigate the tree"], ["Del (tree focused)", "Delete node"], [`${MOD}D`, "Duplicate camera / VC"],
   ];
