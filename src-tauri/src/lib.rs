@@ -6,6 +6,7 @@
 //!                     a tray icon offers "Open in browser" and "Quit".
 
 mod config;
+mod snap_env;
 mod projects;
 mod ui_config;
 mod web;
@@ -50,6 +51,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    snap_env::fix(); // Linux: started from a snap terminal (VS Code snap) → restart without its GTK paths
     let args: Vec<String> = std::env::args().collect();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
