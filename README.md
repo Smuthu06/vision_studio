@@ -48,6 +48,68 @@ Pushing a tag such as `v1.0.0` runs `.github/workflows/release.yml`. That workfl
 Windows (`.msi`/`.exe`), macOS (`.dmg`, universal) and Linux (`.deb`/`.AppImage`)
 installers into a draft GitHub release, and also builds the web app.
 
+### Windows: build the exe with `build-windows.bat`
+
+On a Windows PC with Node.js 18+, Rust (`rustup`, MSVC toolchain) and Visual Studio
+Build Tools ("Desktop development with C++"), double-click `build-windows.bat` or run:
+
+```bat
+build-windows.bat              :: VisionStudio.exe + VisionStudio.ini (portable folder)
+build-windows.bat installer    :: also the NSIS setup.exe and MSI installers
+build-windows.bat skiptests    :: skip the unit tests
+build-windows.bat clean        :: full rebuild
+```
+
+The script checks the prerequisites, installs packages, runs the tests and builds. It
+writes:
+
+```
+release\VisionStudio\VisionStudio.exe
+release\VisionStudio\VisionStudio.ini      <- settings, edit with Notepad
+release\VisionStudio\README.txt
+release\VisionStudio-portable.zip
+release\installers\...                     (with "installer")
+```
+
+Rebuilding keeps an existing `VisionStudio.ini`, so your settings survive. The
+`windows-portable` GitHub workflow runs this same script on a Windows runner, smoke-tests
+web mode, and offers the portable folder as a download.
+
+### One exe, two modes: `VisionStudio.ini`
+
+The exe reads `VisionStudio.ini` from its own folder (template: `config/vision-studio.ini`):
+
+```ini
+[app]
+mode = desktop        ; desktop = own window, web = serve the editor to a browser
+
+[desktop]
+width = 1440
+height = 900
+maximized = false
+
+[web]
+host = 127.0.0.1      ; 0.0.0.0 lets other PCs on the network connect
+port = 8080
+open_browser = true
+```
+
+* **desktop**: the editor opens in a native window with native Open/Save dialogs.
+* **web**: the exe serves the UI embedded in it over HTTP (no extra files) and opens the
+  browser. A tray icon offers *Open Vision Studio in browser* and *Quit*. With
+  `host = 0.0.0.0`, colleagues can open `http://<your-pc>:8080/`; allow the port in
+  Windows Defender Firewall.
+* **Command-line overrides:** `--mode web|desktop`, `--port N`, `--host H`,
+  `--no-browser`, `--config <path>`.
+* **Lookup order:** `--config`, then `<exe name>.ini` next to the exe, then
+  `vision-studio.ini` next to the exe, then the user config folder, then the installed
+  copy. Without any INI the defaults above apply.
+* **Invalid values** are reported in a dialog that names the ignored lines, and the
+  default is used for each one. If the web port is busy, the error says which setting to
+  change.
+* The installer (`installer` option) installs per user and puts `vision-studio.ini` next
+  to the program, so it can be edited without admin rights.
+
 ### Web vs. desktop file handling
 
 | | Desktop (Tauri) | Web: Chrome / Edge | Web: Firefox / Safari |
@@ -127,7 +189,10 @@ src/core/        schema.ts (field specs, parsing, value checks)
 src/state/       store.ts  (document state, undo/redo)
 src/ui/          Tree, Editor (+ section registry), DetailsPane, fields/DataTable, Panels, overlays, icons
 src/platform.ts  web ⇄ desktop file I/O abstraction
-src-tauri/       desktop shell (Rust): dialog + fs plugins, permissions, icons
+src-tauri/       native shell (Rust): INI config (config.rs), web-mode server (web.rs),
+                 mode switch + tray (lib.rs), dialog/fs plugins, permissions, icons
+config/          vision-studio.ini template + README for the portable folder
+build-windows.bat  Windows build: exe + ini (+ installers)
 e2e/flow.py      Playwright test: builds a full config from an empty project and saves it
 ```
 
