@@ -29,6 +29,7 @@ with sync_playwright() as p:
     page.add_init_script("localStorage.clear()")
     page.on("console", lambda m: m.type == "error" and errors.append(m.text))
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("response", lambda r: r.status >= 400 and print("HTTP", r.status, r.request.method, r.url))
     page.goto(URL)
     page.wait_for_selector(".tree-row")
     page.wait_for_selector(".status-path")
