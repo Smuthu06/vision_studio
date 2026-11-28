@@ -478,11 +478,25 @@ function Studio() {
     const text = documentToText(st.doc);
     try {
       const folder = await refreshFolder(docK);
-      if (!folder || !folder.canSave) { // plain browser, or another PC in web mode
+      if (!folder || !folder.canSave) {
+        // No folder access: never fall back to a download silently – say why and what to open instead.
+        const local = `http://127.0.0.1:${location.port || "8080"}/`;
+        const r = await confirm({
+          title: "Can't save to the configurations folder", confirmLabel: "Download a copy instead",
+          message: folder
+            ? <>This page was opened as <code>{location.host}</code>, which Vision Studio does not treat as this PC, so it
+                may not write to <code>{folder.dir}</code>. Open <code>{local}</code> (the address shown on the Vision
+                Studio tray icon) on the PC running Vision Studio and save again.</>
+            : <>This page is not served by Vision Studio{isDesktop ? "" : <> (it was opened from <code>{location.origin === "null" ? "a file" : location.origin}</code>)</>},
+                so it cannot reach the {docK} configuration folder. Start <b>VisionStudio.exe</b> (mode = web in
+                VisionStudio.ini) and use the page it opens – usually <code>http://127.0.0.1:8080/</code> – then save
+                again. Saves there go to <code>configurations/{docK}_configuration</code>.</>,
+        });
+        if (r !== "confirm") return false;
         if (!(await downloadJson(text, name))) return false;
         dispatch({ type: "saved", fileName: name, handle: null });
         storage.remove(DRAFT_KEY);
-        toast(folder ? `Downloaded ${name} – only the PC running Vision Studio saves to ${folder.dir}` : `Downloaded ${name}`, "success");
+        toast(`Downloaded ${name} (not saved to the configurations folder)`, "info");
         return true;
       }
       // Re-saving the file that is open replaces it; any other file of that name needs a yes.
@@ -678,6 +692,10 @@ function Studio() {
         <span className="status-item"><Icon name={isDesktop ? "desktop" : "globe"} size={13} />{platformName}</span>
         <span className="status-item">{kind === "tester" ? `Tester · ${String(root.params.project || "no project")}` : `Schema ${String(root.params.schemaVersion ?? "")}`}</span>
         <span className="status-item">{state.dirty ? "Unsaved changes" : state.fileName ? "Saved" : "Not saved yet"}</span>
+        {projects?.canSave
+          ? <span className="status-item status-path" title={`Save writes to ${projects.dir}`}><Icon name="folder" size={13} />{projects.dir}</span>
+          : <span className="status-item status-warn" title="Save cannot write to the configurations folder from this page – it downloads a copy instead">
+              <Icon name="folder" size={13} />No folder access – Save downloads</span>}
         <span className="spacer" />
         <button className="status-item status-btn" onClick={() => setBottomTab("problems")}>
           <span className="dot dot-error" />{nErr} error{nErr === 1 ? "" : "s"}

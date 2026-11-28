@@ -31,6 +31,8 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(URL)
     page.wait_for_selector(".tree-row")
+    page.wait_for_selector(".status-path")
+    assert DIR in page.locator(".status-path").inner_text(), page.locator(".statusbar").inner_text()
     field(page, "Project Name").fill("sample")
     page.keyboard.press("Tab")
     assert page.locator(".file-chip").inner_text().strip() == "sample_v1.0.0.json"

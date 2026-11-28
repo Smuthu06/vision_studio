@@ -49,6 +49,14 @@ pub fn asset_path(url: &str) -> Option<String> {
 
 /// Saving is allowed only from the PC running Vision Studio: loopback peer
 /// address and a loopback Host header (guards against DNS rebinding).
+/// Loopback, including IPv4-mapped IPv6 (::ffff:127.0.0.1) as seen on dual-stack sockets.
+pub fn is_loopback_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback()),
+        v4 => v4.is_loopback(),
+    }
+}
+
 pub fn is_local(peer_is_loopback: bool, host_header: Option<&str>) -> bool {
     let Some(host) = host_header else { return false };
     let name = if let Some(rest) = host.strip_prefix('[') {
@@ -67,7 +75,7 @@ fn json_response(status: u16, body: &impl serde::Serialize) -> Response<std::io:
 }
 
 fn handle_ui_config(store: &Store, mut request: Request) {
-    let peer_loopback = request.remote_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    let peer_loopback = request.remote_addr().map(|a| is_loopback_ip(a.ip())).unwrap_or(false);
     let host = request.headers().iter().find(|h| h.field.equiv("Host")).map(|h| h.value.as_str().to_string());
     let local = is_local(peer_loopback, host.as_deref());
     let response = match *request.method() {
@@ -128,7 +136,7 @@ fn handle_files(folders: &Folders, rest: &str, request: Request) {
 }
 
 fn handle_folder(projects: &crate::projects::ProjectDir, name: Option<&str>, mut request: Request) {
-    let peer_loopback = request.remote_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    let peer_loopback = request.remote_addr().map(|a| is_loopback_ip(a.ip())).unwrap_or(false);
     let host = request.headers().iter().find(|h| h.field.equiv("Host")).map(|h| h.value.as_str().to_string());
     let local = is_local(peer_loopback, host.as_deref());
     let err = |status: u16, e: FileError| json_response(status, &e);
@@ -208,7 +216,14 @@ pub fn names_file(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{asset_path, decode_segment, is_local, names_file};
+    use super::{asset_path, decode_segment, is_local, is_loopback_ip, names_file};
+
+    #[test]
+    fn mapped_loopback_counts_as_local() {
+        assert!(is_loopback_ip("::ffff:127.0.0.1".parse().unwrap()));
+        assert!(is_loopback_ip("::1".parse().unwrap()));
+        assert!(!is_loopback_ip("::ffff:192.168.1.5".parse().unwrap()));
+    }
 
     #[test]
     fn decodes_file_names() {
