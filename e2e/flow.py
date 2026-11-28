@@ -122,8 +122,15 @@ with sync_playwright() as p:
     # undo / redo
     page.keyboard.press("Control+z"); page.keyboard.press("Control+y")
 
+    # no Vision Studio backend here: Save explains why it can't use the folder, no silent download
+    page.wait_for_selector(".status-warn:has-text(\"No folder access\")")
+    page.keyboard.press("Control+s")
+    page.wait_for_selector(".modal h3:has-text(\"Can't save to the configurations folder\")")
+    assert "VisionStudio.exe" in page.locator(".modal").inner_text()
+    page.wait_for_timeout(200)
+    page.screenshot(path="/tmp/e/save_no_backend.png")
     with page.expect_download() as dl:
-        page.keyboard.press("Control+s")
+        page.locator(".modal .btn", has_text="Download a copy instead").click()
     path = dl.value.path()
     data = json.load(open(path))
     pr = data["project"]

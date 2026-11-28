@@ -669,3 +669,5 @@ code.wrap { overflow-wrap: anywhere; }
 .pick-project .sel { width: 100%; margin-top: 6px; }
 .pick-project .form-label { display: block; font-weight: 600; font-size: 12.5px; }
 .pick-when { margin: 6px 0 14px; }
+.status-item.status-warn { color: var(--warn); font-weight: 600; }
+.status-item.status-path { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
